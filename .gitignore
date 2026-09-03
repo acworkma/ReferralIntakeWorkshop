@@ -1,0 +1,15 @@
+.env
+.venv/
+.python-deps/
+.tools/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+*.db
+node_modules/
+dist/
+coverage/
+local-data/
+infra/out/
+.azure/
