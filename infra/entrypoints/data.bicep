@@ -1,6 +1,7 @@
 targetScope = 'resourceGroup'
 
 param location string = resourceGroup().location
+param sqlLocation string = location
 param workloadName string = 'referralintake'
 param environmentName string = 'dev'
 param uniqueSuffix string
@@ -18,6 +19,7 @@ module component '../modules/data.bicep' = {
   name: 'data'
   params: {
     location: location
+    sqlLocation: sqlLocation
     workloadName: workloadName
     environmentName: environmentName
     uniqueSuffix: uniqueSuffix

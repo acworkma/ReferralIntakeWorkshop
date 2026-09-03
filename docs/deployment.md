@@ -5,7 +5,7 @@
 - Azure CLI with current Bicep CLI (`az bicep upgrade`)
 - Owner or User Access Administrator plus Contributor at the target subscription
 - Microsoft Entra app registration with redirect URI `https://<private-app-fqdn>/.auth/login/aad/callback`
-- Entra groups for SQL administration and JIT requesters
+- Entra group for SQL administration
 - Private DNS/network reachability for administration and a VNet-connected CI runner
 
 Register providers once:
@@ -33,7 +33,7 @@ az deployment sub create `
   --parameters infra\main.bicepparam
 ```
 
-The root creates `rg-referralintake`. It intentionally deploys Microsoft sample placeholders first because a new ACR is empty. Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Run `scripts/bootstrap-sql.sql` from the JIT host, then restart the API revision so SQLAlchemy creates the schema.
+The root creates `rg-referralintake`. It intentionally deploys Microsoft sample placeholders first because a new ACR is empty. Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion Developer to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
 
 ## Independent components
 

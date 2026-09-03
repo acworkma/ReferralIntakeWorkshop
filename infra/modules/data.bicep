@@ -1,4 +1,5 @@
 param location string
+param sqlLocation string
 @minLength(3)
 param workloadName string
 param environmentName string
@@ -14,7 +15,7 @@ param containerAppsPrincipalId string
 param tags object
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: 'st${workloadName}${environmentName}${uniqueSuffix}'
+  name: take('st${take(workloadName, 10)}${take(environmentName, 3)}${uniqueSuffix}', 24)
   location: location
   tags: tags
   sku: { name: 'Standard_ZRS' }
@@ -120,8 +121,8 @@ resource storageDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroup
 ]
 
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
-  name: 'sql-${workloadName}-${environmentName}-${uniqueSuffix}'
-  location: location
+  name: 'sql-${workloadName}-${environmentName}-${take(replace(sqlLocation, '-', ''), 6)}-${uniqueSuffix}'
+  location: sqlLocation
   tags: tags
   properties: {
     administrators: {
@@ -142,7 +143,7 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
 resource database 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: 'sqldb-${workloadName}'
-  location: location
+  location: sqlLocation
   tags: tags
   sku: { name: 'S0', tier: 'Standard' }
   properties: {

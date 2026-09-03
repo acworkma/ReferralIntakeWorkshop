@@ -13,6 +13,19 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
   properties: {
     securityRules: [
       {
+        name: 'AllowBastionDeveloperRdp'
+        properties: {
+          priority: 200
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '3389'
+          sourceAddressPrefix: '168.63.129.16'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
         name: 'DenyInternetInbound'
         properties: {
           priority: 4096
@@ -78,7 +91,6 @@ resource hub 'Microsoft.Network/virtualNetworks@2024-03-01' = {
         name: 'AzureBastionSubnet'
         properties: {
           addressPrefix: '10.20.1.0/26'
-          networkSecurityGroup: { id: hubNsg.id }
         }
       }
       {
@@ -162,7 +174,7 @@ resource spokeToHub 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@20
 var zones = [
   'privatelink.blob.${environment().suffixes.storage}'
   'privatelink.queue.${environment().suffixes.storage}'
-  'privatelink.${environment().suffixes.sqlServerHostname}'
+  'privatelink.database.windows.net'
   'privatelink.vaultcore.azure.net'
   'privatelink.azurecr.io'
   'privatelink.cognitiveservices.azure.com'

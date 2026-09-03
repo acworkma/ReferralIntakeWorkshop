@@ -3,6 +3,8 @@ targetScope = 'subscription'
 @description('Resource group for the reference deployment.')
 param resourceGroupName string = 'rg-referralintake'
 param location string = 'eastus2'
+@description('SQL region, used when SQL provisioning is restricted in the primary region.')
+param sqlLocation string = 'eastus'
 @description('US fallback for services not available in the primary region.')
 param aiFallbackLocation string = 'westus3'
 param workloadName string = 'referralintake'
@@ -16,7 +18,7 @@ param entraClientId string
 param tenantId string = tenant().tenantId
 @description('Object ID of the Entra group that administers Azure SQL.')
 param sqlAdminGroupObjectId string
-@description('Object ID of the Entra group allowed to request JIT VM access.')
+@description('Object ID retained for backward compatibility; JIT is no longer deployed.')
 param jumpboxAdminGroupObjectId string
 @secure()
 param jumpboxAdminPassword string
@@ -54,6 +56,7 @@ module observability 'modules/observability.bicep' = {
     location: location
     workloadName: workloadName
     environmentName: environmentName
+    hubVnetName: 'vnet-${workloadName}-hub-${environmentName}'
     tags: tags
   }
 }
@@ -77,6 +80,7 @@ module data 'modules/data.bicep' = {
   name: 'data'
   params: {
     location: location
+    sqlLocation: sqlLocation
     workloadName: workloadName
     environmentName: environmentName
     uniqueSuffix: uniqueSuffix
@@ -177,7 +181,17 @@ module jumpbox 'modules/jumpbox.bicep' = if (deployJumpbox) {
     environmentName: environmentName
     jumpboxSubnetId: network.outputs.jumpboxSubnetId
     adminPassword: jumpboxAdminPassword
-    allowedJitPrincipalId: jumpboxAdminGroupObjectId
+    tags: tags
+  }
+}
+
+module bastion 'modules/bastion.bicep' = {
+  scope: resourceGroup
+  name: 'bastion'
+  params: {
+    location: location
+    workloadName: workloadName
+    environmentName: environmentName
     tags: tags
   }
 }

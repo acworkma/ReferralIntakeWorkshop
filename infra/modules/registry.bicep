@@ -23,7 +23,6 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = 
     policies: {
       quarantinePolicy: { status: 'disabled' }
       retentionPolicy: { days: 7, status: 'enabled' }
-      trustPolicy: { type: 'Notary', status: 'enabled' }
     }
   }
 }

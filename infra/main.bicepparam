@@ -2,6 +2,7 @@ using './main.bicep'
 
 param resourceGroupName = 'rg-referralintake'
 param location = 'eastus2'
+param sqlLocation = 'centralus'
 param aiFallbackLocation = 'westus3'
 param workloadName = 'referralintake'
 param environmentName = 'dev'
