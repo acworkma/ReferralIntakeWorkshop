@@ -6,13 +6,11 @@ param tags object
 var hubName = 'vnet-${workloadName}-hub-${environmentName}'
 var spokeName = 'vnet-${workloadName}-spoke-${environmentName}'
 var bastionSubnetPrefix = '10.20.1.0/26'
-// Azure Bastion Developer SKU (shared-pool architecture) proxies connections through the
-// platform address 168.63.129.16 rather than genuinely sourcing from AzureBastionSubnet, so
-// both addresses are allowed here: 168.63.129.16 for Developer SKU today, and the Bastion
-// subnet CIDR so RDP keeps working without further NSG changes if this is upgraded to a
-// dedicated SKU (Basic/Standard/Premium) later.
-var bastionRdpSourcePrefixes = ['168.63.129.16', bastionSubnetPrefix]
 
+// Standard NSG rule allowing RDP from the AzureBastionSubnet to the jumpbox subnet. This is
+// the officially documented Azure Bastion pattern (Basic/Standard/Premium SKUs deploy into
+// AzureBastionSubnet and connect to VMs from there), so it matches expected, recognizable
+// traffic for tenant governance/compliance scanners.
 resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
   name: 'nsg-${workloadName}-hub-${environmentName}'
   location: location
@@ -28,7 +26,7 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '3389'
-          sourceAddressPrefixes: bastionRdpSourcePrefixes
+          sourceAddressPrefix: bastionSubnetPrefix
           destinationAddressPrefix: '*'
         }
       }
@@ -46,6 +44,148 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
         }
       }
     ]
+  }
+}
+
+// Required NSG rules for the AzureBastionSubnet itself, per Microsoft's documented
+// requirements for dedicated Bastion SKUs (Basic/Standard/Premium):
+// https://learn.microsoft.com/azure/bastion/bastion-nsg
+resource bastionNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
+  name: 'nsg-${workloadName}-bastion-${environmentName}'
+  location: location
+  tags: tags
+  properties: {
+    securityRules: [
+      {
+        name: 'AllowHttpsInbound'
+        properties: {
+          priority: 120
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'Internet'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
+        name: 'AllowGatewayManagerInbound'
+        properties: {
+          priority: 130
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'GatewayManager'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
+        name: 'AllowAzureLoadBalancerInbound'
+        properties: {
+          priority: 140
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
+        name: 'AllowBastionHostCommunicationInbound'
+        properties: {
+          priority: 150
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRanges: ['8080', '5701']
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+        }
+      }
+      {
+        name: 'DenyAllInbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
+        name: 'AllowSshRdpOutbound'
+        properties: {
+          priority: 100
+          direction: 'Outbound'
+          access: 'Allow'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRanges: ['22', '3389']
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: 'VirtualNetwork'
+        }
+      }
+      {
+        name: 'AllowAzureCloudOutbound'
+        properties: {
+          priority: 110
+          direction: 'Outbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: 'AzureCloud'
+        }
+      }
+      {
+        name: 'AllowBastionCommunicationOutbound'
+        properties: {
+          priority: 120
+          direction: 'Outbound'
+          access: 'Allow'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRanges: ['8080', '5701']
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+        }
+      }
+      {
+        name: 'AllowHttpOutbound'
+        properties: {
+          priority: 130
+          direction: 'Outbound'
+          access: 'Allow'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '80'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: 'Internet'
+        }
+      }
+    ]
+  }
+}
+
+resource bastionPip 'Microsoft.Network/publicIPAddresses@2024-03-01' = {
+  name: 'pip-bastion-${workloadName}-${environmentName}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
   }
 }
 
@@ -97,7 +237,8 @@ resource hub 'Microsoft.Network/virtualNetworks@2024-03-01' = {
       {
         name: 'AzureBastionSubnet'
         properties: {
-          addressPrefix: '10.20.1.0/26'
+          addressPrefix: bastionSubnetPrefix
+          networkSecurityGroup: { id: bastionNsg.id }
         }
       }
       {
@@ -212,6 +353,8 @@ output acaSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnet
 output functionSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', spoke.name, 'snet-functions')
 output privateEndpointSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', spoke.name, 'snet-private-endpoints')
 output jumpboxSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', hub.name, 'snet-jumpbox')
+output bastionSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', hub.name, 'AzureBastionSubnet')
+output bastionPublicIpId string = bastionPip.id
 output blobPrivateDnsZoneId string = privateDnsZones[0].id
 output queuePrivateDnsZoneId string = privateDnsZones[1].id
 output sqlPrivateDnsZoneId string = privateDnsZones[2].id

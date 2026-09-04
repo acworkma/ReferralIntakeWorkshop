@@ -191,12 +191,10 @@ module bastion 'modules/bastion.bicep' = {
     location: location
     workloadName: workloadName
     environmentName: environmentName
-    hubVnetName: 'vnet-${workloadName}-hub-${environmentName}'
+    bastionSubnetId: network.outputs.bastionSubnetId
+    bastionPublicIpId: network.outputs.bastionPublicIpId
     tags: tags
   }
-  dependsOn: [
-    network
-  ]
 }
 
 module security 'modules/defender.bicep' = {

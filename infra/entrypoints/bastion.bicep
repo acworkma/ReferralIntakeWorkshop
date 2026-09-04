@@ -3,7 +3,8 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param workloadName string = 'referralintake'
 param environmentName string = 'dev'
-param hubVnetName string = 'vnet-${workloadName}-hub-${environmentName}'
+param bastionSubnetId string
+param bastionPublicIpId string
 param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
 
 module component '../modules/bastion.bicep' = {
@@ -12,7 +13,8 @@ module component '../modules/bastion.bicep' = {
     location: location
     workloadName: workloadName
     environmentName: environmentName
-    hubVnetName: hubVnetName
+    bastionSubnetId: bastionSubnetId
+    bastionPublicIpId: bastionPublicIpId
     tags: tags
   }
 }
