@@ -39,9 +39,8 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
         provisionVMAgent: true
         enableAutomaticUpdates: true
         patchSettings: {
-          patchMode: 'AutomaticByPlatform'
-          assessmentMode: 'AutomaticByPlatform'
-          enableHotpatching: false
+          patchMode: 'AutomaticByOS'
+          assessmentMode: 'ImageDefault'
         }
       }
     }
