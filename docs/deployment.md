@@ -53,7 +53,7 @@ az deployment group create -g rg-referralintake `
     containerAppsPrincipalId='<identity-output>'
 ```
 
-Use the same `az deployment group what-if/create` pattern for `observability`, `identity-security`, `data`, `ai`, `compute`, `integration`, and `jumpbox`. Deploy in that order. Deploy Defender with `az deployment sub what-if/create --location eastus2 --template-file infra\entrypoints\defender.bicep`.
+Use the same `az deployment group what-if/create` pattern for `observability`, `identity-security`, `data`, `ai`, `compute`, `integration`, `bastion`, and `jumpbox`. Deploy in that order (`bastion` and `jumpbox` both depend on `network`'s hub VNet/subnet outputs and can be deployed in either order relative to each other). Deploy Defender with `az deployment sub what-if/create --location eastus2 --template-file infra\entrypoints\defender.bicep`.
 
 ## ACR public/private choice
 

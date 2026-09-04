@@ -3,19 +3,18 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param workloadName string = 'referralintake'
 param environmentName string = 'dev'
-param jumpboxSubnetId string
-@secure()
-param adminPassword string
+param hubVnetName string = 'vnet-${workloadName}-hub-${environmentName}'
 param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
 
-module component '../modules/jumpbox.bicep' = {
-  name: 'jumpbox'
+module component '../modules/bastion.bicep' = {
+  name: 'bastion'
   params: {
     location: location
     workloadName: workloadName
     environmentName: environmentName
-    jumpboxSubnetId: jumpboxSubnetId
-    adminPassword: adminPassword
+    hubVnetName: hubVnetName
     tags: tags
   }
 }
+
+output bastionHostName string = component.outputs.bastionHostName

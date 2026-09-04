@@ -56,7 +56,6 @@ module observability 'modules/observability.bicep' = {
     location: location
     workloadName: workloadName
     environmentName: environmentName
-    hubVnetName: 'vnet-${workloadName}-hub-${environmentName}'
     tags: tags
   }
 }
@@ -192,8 +191,12 @@ module bastion 'modules/bastion.bicep' = {
     location: location
     workloadName: workloadName
     environmentName: environmentName
+    hubVnetName: 'vnet-${workloadName}-hub-${environmentName}'
     tags: tags
   }
+  dependsOn: [
+    network
+  ]
 }
 
 module security 'modules/defender.bicep' = {
