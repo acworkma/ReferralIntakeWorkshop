@@ -6,6 +6,12 @@ param tags object
 var hubName = 'vnet-${workloadName}-hub-${environmentName}'
 var spokeName = 'vnet-${workloadName}-spoke-${environmentName}'
 var bastionSubnetPrefix = '10.20.1.0/26'
+// Azure Bastion Developer SKU (shared-pool architecture) proxies connections through the
+// platform address 168.63.129.16 rather than genuinely sourcing from AzureBastionSubnet, so
+// both addresses are allowed here: 168.63.129.16 for Developer SKU today, and the Bastion
+// subnet CIDR so RDP keeps working without further NSG changes if this is upgraded to a
+// dedicated SKU (Basic/Standard/Premium) later.
+var bastionRdpSourcePrefixes = ['168.63.129.16', bastionSubnetPrefix]
 
 resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
   name: 'nsg-${workloadName}-hub-${environmentName}'
@@ -22,7 +28,7 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '3389'
-          sourceAddressPrefix: bastionSubnetPrefix
+          sourceAddressPrefixes: bastionRdpSourcePrefixes
           destinationAddressPrefix: '*'
         }
       }
