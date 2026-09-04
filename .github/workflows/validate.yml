@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: api/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
-      - run: pytest tests
+      - run: python -m pytest tests
 
   bicep:
     runs-on: ubuntu-latest
