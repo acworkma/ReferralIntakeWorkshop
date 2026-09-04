@@ -5,6 +5,7 @@ param tags object
 
 var hubName = 'vnet-${workloadName}-hub-${environmentName}'
 var spokeName = 'vnet-${workloadName}-spoke-${environmentName}'
+var bastionSubnetPrefix = '10.20.1.0/26'
 
 resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
   name: 'nsg-${workloadName}-hub-${environmentName}'
@@ -13,7 +14,7 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
   properties: {
     securityRules: [
       {
-        name: 'AllowBastionDeveloperRdp'
+        name: 'AllowBastionRdpInbound'
         properties: {
           priority: 200
           direction: 'Inbound'
@@ -21,7 +22,7 @@ resource hubNsg 'Microsoft.Network/networkSecurityGroups@2024-03-01' = {
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '3389'
-          sourceAddressPrefix: '168.63.129.16'
+          sourceAddressPrefix: bastionSubnetPrefix
           destinationAddressPrefix: '*'
         }
       }
