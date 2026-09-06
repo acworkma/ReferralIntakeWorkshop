@@ -60,6 +60,21 @@ describe("api request handling", () => {
     await expect(api.list()).rejects.toThrow(/unexpected response/i);
   });
 
+  it("explains a 403 from the auth layer instead of failing silently", async () => {
+    // Easy Auth rejects with an empty, non-JSON body and no statusText over HTTP/2.
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response("", { status: 403, statusText: "" }),
+    );
+    await expect(api.list()).rejects.toThrow(/403/);
+  });
+
+  it("never throws an empty message when the error body has no detail", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse({ detail: "" }, { status: 500, statusText: "" }),
+    );
+    await expect(api.list()).rejects.toThrow(/request failed \(500\)/i);
+  });
+
   it("surfaces the server-provided detail message on a JSON error response", async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       jsonResponse({ detail: "File must be between 1 byte and 10 bytes." }, { status: 413 }),

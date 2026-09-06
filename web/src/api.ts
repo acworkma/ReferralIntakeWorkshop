@@ -2,6 +2,13 @@ import type { Identity, Referral } from "./types";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
+function describeStatus(response: Response): string {
+  // statusText is always empty over HTTP/2, so never rely on it alone.
+  return response.statusText
+    ? `${response.status} ${response.statusText}`
+    : String(response.status);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -25,16 +32,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
     console.error(`Unexpected non-JSON response from ${path}`, response.status, text.slice(0, 500));
+    if (response.status === 403) {
+      throw new Error(
+        "Request rejected (403). Your sign-in session may be stale - refresh the page and try again.",
+      );
+    }
     throw new Error(
       response.ok
         ? "Unexpected response from the server. Try refreshing the page."
-        : `Request failed (${response.status} ${response.statusText}).`,
+        : `Request failed (${describeStatus(response)}).`,
     );
   }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(body.detail ?? "Request failed.");
+    const body = await response.json().catch(() => null);
+    const detail = typeof body?.detail === "string" ? body.detail.trim() : "";
+    throw new Error(detail || `Request failed (${describeStatus(response)}).`);
   }
   return response.json() as Promise<T>;
 }

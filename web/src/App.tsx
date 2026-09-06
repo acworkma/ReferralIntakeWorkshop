@@ -27,6 +27,13 @@ function formatField(value: string) {
   return value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
 }
 
+// A thrown Error with an empty message would render as no banner at all,
+// leaving a failed action looking like nothing happened.
+function toMessage(reason: unknown, fallback: string) {
+  const message = reason instanceof Error ? reason.message.trim() : "";
+  return message || fallback;
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [identity, setIdentity] = useState<Identity | null>(null);
@@ -44,7 +51,7 @@ function App() {
       setSelectedId((current) => current ?? rows[0]?.id ?? null);
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load the queue.");
+      setError(toMessage(reason, "Unable to load the queue."));
     }
   }, []);
 
@@ -59,7 +66,7 @@ function App() {
         setReferrals(rows);
         setSelectedId(rows[0]?.id ?? null);
       })
-      .catch((reason: Error) => setError(reason.message));
+      .catch((reason: unknown) => setError(toMessage(reason, "Unable to load the workspace.")));
   }, []);
 
   useEffect(() => {
@@ -79,7 +86,7 @@ function App() {
       setReferrals((rows) => [created, ...rows]);
       setSelectedId(created.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Upload failed.");
+      setError(toMessage(reason, "Upload failed."));
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -94,7 +101,7 @@ function App() {
       setReferrals((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
       setNote("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Review could not be saved.");
+      setError(toMessage(reason, "Review could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -313,3 +320,5 @@ function App() {
 }
 
 export default App;
+
+
