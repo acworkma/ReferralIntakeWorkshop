@@ -255,15 +255,17 @@ function App() {
                     <h2>{selected.filename}</h2>
                     <p>Submitted by {selected.submittedBy}</p>
                   </div>
-                  <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
-                  <button
-                    className="secondary danger"
-                    disabled={busy}
-                    onClick={() => remove(selected)}
-                    aria-label={`Delete ${selected.filename}`}
-                  >
-                    <Trash2 size={17} /> Delete
-                  </button>
+                  <div className="review-head-actions">
+                    <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
+                    <button
+                      className="secondary danger"
+                      disabled={busy}
+                      onClick={() => remove(selected)}
+                      aria-label={`Delete ${selected.filename}`}
+                    >
+                      <Trash2 size={17} /> Delete
+                    </button>
+                  </div>
                 </div>
 
                 {(selected.status === "queued" || selected.status === "processing") && (

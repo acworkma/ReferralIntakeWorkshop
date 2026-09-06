@@ -301,6 +301,22 @@ h3 {
   border-bottom: 1px solid var(--rule);
 }
 
+.review-head > div:first-child {
+  min-width: 0;
+}
+
+.review-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-head h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 button.primary,
 button.secondary {
   display: inline-flex;
@@ -408,9 +424,12 @@ button:disabled {
 
 .queue-copy small {
   margin-top: 4px;
+  overflow: hidden;
   color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status {
