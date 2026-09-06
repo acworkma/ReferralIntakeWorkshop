@@ -26,10 +26,11 @@ See [deployment instructions](docs/deployment.md) for full prerequisites, the wh
 | `api/` | FastAPI application, Azure Functions HTTP adapter, and queue worker |
 | `infra/` | Modular Bicep and independently deployable entry points |
 | `docs/` | Architecture, security, deployment, operations, and caveats |
+| `samples/` | Sample referral documents for exercising the upload flow |
 | `.github/workflows/` | Validation and OIDC-based image/deployment delivery |
 
 Start with [deployment instructions](docs/deployment.md), [architecture](docs/architecture.md), and [security](docs/security.md).
 
-> **Safety:** This repository is a workshop reference. Avoid uploading real personal, health, customer, or production data.
+> **Safety:** This repository is a workshop reference. Avoid uploading real personal, health, customer, or production data. See [`samples/`](samples/README.md) for ready-to-use sample documents covering every intake channel.
 
 All Azure examples use `rg-referralintake` and `eastus2` by default. Names are parameterized and suffixed for global uniqueness.

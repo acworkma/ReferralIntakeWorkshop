@@ -4,6 +4,13 @@ param environmentName string
 param uniqueSuffix string
 param privateEndpointSubnetId string
 param keyVaultPrivateDnsZoneId string
+@description('Jumpbox VM admin password, persisted to Key Vault as a secret so it has a durable, RBAC-governed home after deployment.')
+@secure()
+param jumpboxAdminPassword string = ''
+@description('Object ID of the Entra group granted read access to the jumpbox admin password secret.')
+param jumpboxAdminGroupObjectId string = ''
+@description('Whether to persist the jumpbox admin password to Key Vault. Set false when the jumpbox is not being deployed.')
+param storeJumpboxPassword bool = true
 param tags object
 
 resource functionIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -46,6 +53,27 @@ resource functionSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01
   }
 }
 
+resource jumpboxPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (storeJumpboxPassword) {
+  parent: keyVault
+  name: 'jumpbox-admin-password'
+  properties: {
+    value: jumpboxAdminPassword
+  }
+}
+
+resource jumpboxAdminSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (storeJumpboxPassword && !empty(jumpboxAdminGroupObjectId)) {
+  name: guid(keyVault.id, jumpboxAdminGroupObjectId, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    principalId: jumpboxAdminGroupObjectId
+    principalType: 'Group'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+  }
+}
+
 resource keyVaultPe 'Microsoft.Network/privateEndpoints@2024-03-01' = {
   name: 'pe-${keyVault.name}'
   location: location
@@ -81,3 +109,4 @@ output containerAppsIdentityId string = containerAppsIdentity.id
 output containerAppsPrincipalId string = containerAppsIdentity.properties.principalId
 output containerAppsClientId string = containerAppsIdentity.properties.clientId
 output keyVaultId string = keyVault.id
+output keyVaultName string = keyVault.name

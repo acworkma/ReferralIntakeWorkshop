@@ -17,6 +17,7 @@
 | ACA identity | Storage account | Same two roles | API upload and enqueue |
 | Function + ACA identities | Both AI accounts | Cognitive Services User | Token-authenticated inference |
 | Function identity | Key Vault | Key Vault Secrets User | Future secret references; no list of management plane |
+| Jumpbox admin group (`JUMPBOX_ADMIN_GROUP_OBJECT_ID`) | Key Vault | Key Vault Secrets User | Retrieve the jumpbox admin password (`jumpbox-admin-password` secret) for Bastion RDP sessions |
 | ACA identity | ACR | AcrPull | Pull signed/approved workload images |
 | Logic App identity | Storage account | Storage Blob Data Reader | Future read-only notification contract |
 

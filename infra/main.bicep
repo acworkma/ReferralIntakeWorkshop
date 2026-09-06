@@ -18,7 +18,7 @@ param entraClientId string
 param tenantId string = tenant().tenantId
 @description('Object ID of the Entra group that administers Azure SQL.')
 param sqlAdminGroupObjectId string
-@description('Object ID retained for backward compatibility; JIT is no longer deployed.')
+@description('Object ID of the Entra group granted read access to the jumpbox admin password Key Vault secret.')
 param jumpboxAdminGroupObjectId string
 @secure()
 param jumpboxAdminPassword string
@@ -71,6 +71,9 @@ module identity 'modules/identity-security.bicep' = {
     uniqueSuffix: uniqueSuffix
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
     keyVaultPrivateDnsZoneId: network.outputs.keyVaultPrivateDnsZoneId
+    jumpboxAdminPassword: jumpboxAdminPassword
+    jumpboxAdminGroupObjectId: jumpboxAdminGroupObjectId
+    storeJumpboxPassword: deployJumpbox
     tags: tags
   }
 }
@@ -211,4 +214,5 @@ output webFqdn string = compute.outputs.webFqdn
 output containerAppsDefaultDomain string = compute.outputs.containerAppsDefaultDomain
 output functionHostName string = compute.outputs.functionHostName
 output acrLoginServer string = registry.outputs.loginServer
+output keyVaultName string = identity.outputs.keyVaultName
 output localMockIdentityEnabled bool = false

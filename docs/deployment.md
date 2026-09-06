@@ -21,7 +21,7 @@ Create the Microsoft Entra app registration used by Container Apps/Function "Eas
 $env:ENTRA_CLIENT_ID = .\scripts\register-entra-app.ps1
 ```
 
-Set the remaining four environment variables referenced by `infra/main.bicepparam`: `AZURE_UNIQUE_SUFFIX`, `SQL_ADMIN_GROUP_OBJECT_ID`, `JUMPBOX_ADMIN_GROUP_OBJECT_ID`, and `JUMPBOX_ADMIN_PASSWORD`. Keep the password in CI environment secrets, never in a checked-in parameter file.
+Set the remaining four environment variables referenced by `infra/main.bicepparam`: `AZURE_UNIQUE_SUFFIX`, `SQL_ADMIN_GROUP_OBJECT_ID`, `JUMPBOX_ADMIN_GROUP_OBJECT_ID`, and `JUMPBOX_ADMIN_PASSWORD`. Keep the password in CI environment secrets, never in a checked-in parameter file. `JUMPBOX_ADMIN_GROUP_OBJECT_ID` is also granted **Key Vault Secrets User** so its members can retrieve the jumpbox password after deployment (see below); leave it blank to skip that grant.
 
 ## Root deployment and what-if
 
@@ -48,6 +48,16 @@ The root creates `rg-referralintake`. It intentionally deploys Microsoft sample 
 Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion (Basic SKU) to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
 
 The initial Container Apps deployment outputs `containerAppsDefaultDomain`. Redeploy the root template with `containerAppsDefaultDomain` set to that output so it creates the private DNS zone, wildcard A record, and hub/spoke VNet links required for internal ingress. This separate deployment is necessary because Azure assigns the environment default domain during the initial deployment. Keep Container App ingress `external: true`: in an internal environment this remains private to the VNet and makes the application available from the Bastion-connected jumpbox; `external: false` restricts traffic to apps in the Container Apps environment.
+
+### Jumpbox admin password
+
+The deployment persists `JUMPBOX_ADMIN_PASSWORD` into Key Vault as a secret named `jumpbox-admin-password`, so it doesn't only exist in a CI secret store. Retrieve it (if you have `Key Vault Secrets User`, granted automatically to `JUMPBOX_ADMIN_GROUP_OBJECT_ID`) with:
+
+```powershell
+az keyvault secret show --vault-name <keyVaultName-output> --name jumpbox-admin-password --query value -o tsv
+```
+
+The Key Vault secret and the VM's actual OS password are two independent stores — updating one does not update the other. To rotate the password, reset it on the VM (via the VM Access extension, `az vm user update`, or a redeploy with a new `JUMPBOX_ADMIN_PASSWORD`) and then update the Key Vault secret to match, e.g. `az keyvault secret set --vault-name <keyVaultName-output> --name jumpbox-admin-password --value <new-password>`.
 
 ## Independent components
 
