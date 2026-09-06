@@ -13,7 +13,7 @@ param queuePrivateDnsZoneId string
 param sqlPrivateDnsZoneId string
 param functionPrincipalId string
 param containerAppsPrincipalId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/data.bicep' = {
   name: 'data'

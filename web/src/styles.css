@@ -247,7 +247,6 @@ h3 {
   letter-spacing: 0.04em;
 }
 
-.safety,
 .error {
   display: flex;
   align-items: center;
@@ -258,33 +257,6 @@ h3 {
   border-radius: 8px;
   color: var(--warning);
   background: var(--warning-bg);
-}
-
-.safety div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-
-.safety span {
-  font-size: 0.86rem;
-}
-
-.safety-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: auto;
-  color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.safety-check input {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--action);
 }
 
 .error {
@@ -731,19 +703,8 @@ button:disabled {
     display: none;
   }
 
-  .safety,
   .error {
     margin: 14px 14px 0;
-  }
-
-  .safety {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .safety-check {
-    width: 100%;
-    margin-left: 34px;
   }
 
   .workspace {

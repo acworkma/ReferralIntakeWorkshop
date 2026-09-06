@@ -47,6 +47,8 @@ The root creates `rg-referralintake`. It intentionally deploys Microsoft sample 
 
 Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion (Basic SKU) to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
 
+The initial Container Apps deployment outputs `containerAppsDefaultDomain`. Redeploy the root template with `containerAppsDefaultDomain` set to that output so it creates the private DNS zone, wildcard A record, and hub/spoke VNet links required for internal ingress. This separate deployment is necessary because Azure assigns the environment default domain during the initial deployment. Keep Container App ingress `external: true`: in an internal environment this remains private to the VNet and makes the application available from the Bastion-connected jumpbox; `external: false` restricts traffic to apps in the Container Apps environment.
+
 ## Independent components
 
 Every component has a resource-group entry point under `infra/entrypoints`; Defender remains subscription-scoped. Pass outputs from prerequisites explicitly:

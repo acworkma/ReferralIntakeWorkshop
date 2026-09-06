@@ -4,6 +4,10 @@ param environmentName string
 param entraClientId string
 param tenantId string
 param acaSubnetId string
+param hubVnetId string
+param spokeVnetId string
+@description('Container Apps environment default domain. Set after initial environment deployment to provision private ingress DNS.')
+param containerAppsDefaultDomain string = ''
 param functionSubnetId string
 param privateEndpointSubnetId string
 param sitesPrivateDnsZoneId string
@@ -44,6 +48,45 @@ resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
+resource containerAppsPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (!empty(containerAppsDefaultDomain)) {
+  name: containerAppsDefaultDomain
+  location: 'global'
+  tags: tags
+}
+
+resource containerAppsWildcardRecord 'Microsoft.Network/privateDnsZones/A@2024-06-01' = if (!empty(containerAppsDefaultDomain)) {
+  parent: containerAppsPrivateDnsZone
+  name: '*'
+  properties: {
+    ttl: 300
+    aRecords: [
+      {
+        ipv4Address: containerEnvironment.properties.staticIp
+      }
+    ]
+  }
+}
+
+resource containerAppsHubDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (!empty(containerAppsDefaultDomain)) {
+  parent: containerAppsPrivateDnsZone
+  name: 'link-hub'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: { id: hubVnetId }
+  }
+}
+
+resource containerAppsSpokeDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (!empty(containerAppsDefaultDomain)) {
+  parent: containerAppsPrivateDnsZone
+  name: 'link-spoke'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: { id: spokeVnetId }
+  }
+}
+
 resource web 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-${workloadName}-web-${environmentName}'
   location: location
@@ -57,7 +100,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: false
+        external: true
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
@@ -100,7 +143,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
             { name: 'CONTENT_UNDERSTANDING_ENDPOINT', value: contentUnderstandingEndpoint }
             { name: 'LOCAL_MOCK_IDENTITY', value: 'false' }
-            { name: 'ALLOW_LOCAL_SYNTHETIC_EXTRACTION', value: 'false' }
+            { name: 'ALLOW_LOCAL_MOCK_EXTRACTION', value: 'false' }
           ]
         }
       ]
@@ -198,7 +241,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
         { name: 'CONTENT_UNDERSTANDING_ENDPOINT', value: contentUnderstandingEndpoint }
         { name: 'LOCAL_MOCK_IDENTITY', value: 'false' }
-        { name: 'ALLOW_LOCAL_SYNTHETIC_EXTRACTION', value: 'false' }
+        { name: 'ALLOW_LOCAL_MOCK_EXTRACTION', value: 'false' }
       ]
     }
   }
@@ -256,4 +299,5 @@ resource functionDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGrou
 }
 
 output webFqdn string = web.properties.configuration.ingress.fqdn
+output containerAppsDefaultDomain string = containerEnvironment.properties.defaultDomain
 output functionHostName string = functionApp.properties.defaultHostName

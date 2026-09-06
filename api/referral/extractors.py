@@ -18,15 +18,15 @@ class Extraction:
 FIELDS = ("referralType", "priority", "service", "requestedDate", "summary")
 
 
-def _synthetic(engine: str, digest: str) -> Extraction:
+def _demo_extraction(engine: str, digest: str) -> Extraction:
     seed = int(digest[:8], 16)
     is_cu = engine == "Content Understanding"
     return Extraction(
         engine=engine,
         fields={
-            "referralType": "Synthetic specialist consultation",
+            "referralType": "Demo specialist consultation",
             "priority": "Routine" if (seed + int(is_cu)) % 3 else "Expedited",
-            "service": "Synthetic care navigation",
+            "service": "Demo care navigation",
             "requestedDate": "2030-01-15",
             "summary": "Generated demonstration referral; contains no personal data.",
         },
@@ -58,8 +58,8 @@ def _poll(url: str, headers: dict[str, str]) -> dict:
 
 def document_intelligence(content: bytes, digest: str) -> Extraction:
     if not settings.document_intelligence_endpoint:
-        if settings.allow_local_synthetic_extraction:
-            return _synthetic("Document Intelligence", digest)
+        if settings.allow_local_mock_extraction:
+            return _demo_extraction("Document Intelligence", digest)
         raise RuntimeError("DOCUMENT_INTELLIGENCE_ENDPOINT is required.")
     url = (
         f"{settings.document_intelligence_endpoint.rstrip('/')}/documentintelligence/"
@@ -79,8 +79,8 @@ def document_intelligence(content: bytes, digest: str) -> Extraction:
 
 def content_understanding(content: bytes, digest: str) -> Extraction:
     if not settings.content_understanding_endpoint:
-        if settings.allow_local_synthetic_extraction:
-            return _synthetic("Content Understanding", digest)
+        if settings.allow_local_mock_extraction:
+            return _demo_extraction("Content Understanding", digest)
         raise RuntimeError("CONTENT_UNDERSTANDING_ENDPOINT is required.")
     url = (
         f"{settings.content_understanding_endpoint.rstrip('/')}/contentunderstanding/"

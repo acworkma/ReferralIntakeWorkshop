@@ -25,10 +25,11 @@ param jumpboxAdminPassword string
 @description('Premium ACR may be reachable publicly for hosted CI. Disable after configuring a private runner.')
 param acrPublicNetworkAccess bool = true
 param deployJumpbox bool = true
+@description('Container Apps environment default domain. Set after initial deployment to provision private ingress DNS.')
+param containerAppsDefaultDomain string = ''
 param tags object = {
   workload: workloadName
   environment: environmentName
-  dataClassification: 'synthetic-only'
   managedBy: 'bicep'
 }
 
@@ -138,6 +139,9 @@ module compute 'modules/compute.bicep' = {
     entraClientId: entraClientId
     tenantId: tenantId
     acaSubnetId: network.outputs.acaSubnetId
+    hubVnetId: network.outputs.hubVnetId
+    spokeVnetId: network.outputs.spokeVnetId
+    containerAppsDefaultDomain: containerAppsDefaultDomain
     functionSubnetId: network.outputs.functionSubnetId
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
     sitesPrivateDnsZoneId: network.outputs.sitesPrivateDnsZoneId
@@ -204,6 +208,7 @@ module security 'modules/defender.bicep' = {
 
 output resourceGroupName string = resourceGroup.name
 output webFqdn string = compute.outputs.webFqdn
+output containerAppsDefaultDomain string = compute.outputs.containerAppsDefaultDomain
 output functionHostName string = compute.outputs.functionHostName
 output acrLoginServer string = registry.outputs.loginServer
 output localMockIdentityEnabled bool = false

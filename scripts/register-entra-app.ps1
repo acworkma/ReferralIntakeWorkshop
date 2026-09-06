@@ -76,9 +76,14 @@ else {
     Write-Host "Created app registration: appId=$appId"
 }
 
-# Idempotent: safe to (re)apply every run.
-Write-Host "Setting identifier URI to api://$appId..."
-az ad app update --id $appId --identifier-uris "api://$appId" | Out-Null
+# Idempotent: safe to (re)apply every run. Easy Auth requests an ID token using
+# the implicit flow, so the registration must explicitly allow ID-token issuance.
+Write-Host "Setting identifier URI and enabling ID-token issuance..."
+az ad app update `
+    --id $appId `
+    --identifier-uris "api://$appId" `
+    --enable-access-token-issuance false `
+    --enable-id-token-issuance true | Out-Null
 
 Write-Host "Ensuring a service principal exists for the app..."
 $sp = az ad sp list --filter "appId eq '$appId'" --query '[0]' -o json | ConvertFrom-Json

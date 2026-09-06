@@ -3,7 +3,7 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param workloadName string = 'referralintake'
 param environmentName string = 'dev'
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/network.bicep' = {
   name: 'network'
@@ -17,3 +17,5 @@ module component '../modules/network.bicep' = {
 
 output acaSubnetId string = component.outputs.acaSubnetId
 output privateEndpointSubnetId string = component.outputs.privateEndpointSubnetId
+output hubVnetId string = component.outputs.hubVnetId
+output spokeVnetId string = component.outputs.spokeVnetId

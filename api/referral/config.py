@@ -10,7 +10,7 @@ def _flag(name: str, default: bool = False) -> bool:
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./referrals.db")
     local_mock_identity: bool = _flag("LOCAL_MOCK_IDENTITY")
-    allow_local_synthetic_extraction: bool = _flag("ALLOW_LOCAL_SYNTHETIC_EXTRACTION")
+    allow_local_mock_extraction: bool = _flag("ALLOW_LOCAL_MOCK_EXTRACTION")
     upload_max_bytes: int = int(os.getenv("UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
     cors_origins: tuple[str, ...] = tuple(
         origin.strip()
@@ -25,7 +25,7 @@ class Settings:
 
     def validate(self) -> None:
         if os.getenv("WEBSITE_INSTANCE_ID") and (
-            self.local_mock_identity or self.allow_local_synthetic_extraction
+            self.local_mock_identity or self.allow_local_mock_extraction
         ):
             raise RuntimeError("Local-only identity and extraction modes are forbidden in Azure.")
 

@@ -6,7 +6,6 @@ import {
   Inbox,
   LoaderCircle,
   Moon,
-  ShieldCheck,
   Sun,
   X,
 } from "lucide-react";
@@ -34,7 +33,6 @@ function App() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [attested, setAttested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -80,7 +78,6 @@ function App() {
       const created = await api.upload(file);
       setReferrals((rows) => [created, ...rows]);
       setSelectedId(created.id);
-      setAttested(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Upload failed.");
     } finally {
@@ -152,22 +149,6 @@ function App() {
           </div>
         </header>
 
-        <section className="safety" aria-label="Synthetic data safety notice">
-          <ShieldCheck size={22} />
-          <div>
-            <strong>Synthetic documents only</strong>
-            <span>No personal, health, customer, or production data. Files must begin with “synthetic-”.</span>
-          </div>
-          <label className="safety-check">
-            <input
-              type="checkbox"
-              checked={attested}
-              onChange={(event) => setAttested(event.target.checked)}
-            />
-            I confirm this file is synthetic
-          </label>
-        </section>
-
         {error && (
           <div className="error" role="alert">
             <X size={18} />
@@ -183,7 +164,7 @@ function App() {
             <div className="section-head">
               <div>
                 <h2>Intake queue</h2>
-                <p>{referrals.length} synthetic referrals</p>
+                <p>{referrals.length} referrals</p>
               </div>
               <input
                 ref={fileInput}
@@ -194,12 +175,11 @@ function App() {
               />
               <button
                 className="primary"
-                disabled={busy || !attested}
+                disabled={busy}
                 onClick={() => fileInput.current?.click()}
-                title={!attested ? "Confirm the synthetic-data attestation first" : undefined}
               >
                 {busy ? <LoaderCircle className="spin" size={18} /> : <FileUp size={18} />}
-                Add synthetic referral
+                Add referral
               </button>
             </div>
 
@@ -207,8 +187,8 @@ function App() {
               {referrals.length === 0 ? (
                 <div className="empty">
                   <FileUp size={32} />
-                  <h3>Start with a synthetic document</h3>
-                  <p>Name it “synthetic-example.pdf”. The API validates its type, size, and signature.</p>
+                  <h3>Start with a referral document</h3>
+                  <p>Upload a PDF, PNG, or JPEG. The API validates its type, size, and signature.</p>
                 </div>
               ) : (
                 referrals.map((referral) => (

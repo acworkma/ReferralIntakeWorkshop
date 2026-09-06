@@ -5,7 +5,7 @@ param workloadName string = 'referralintake'
 param environmentName string = 'dev'
 param bastionSubnetId string
 param bastionPublicIpId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/bastion.bicep' = {
   name: 'bastion'

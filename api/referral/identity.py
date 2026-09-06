@@ -15,5 +15,5 @@ def current_user(x_ms_client_principal: str | None = Header(default=None)) -> st
         except (ValueError, KeyError, TypeError):
             raise HTTPException(401, "Invalid App Service authentication principal.") from None
     if settings.local_mock_identity:
-        return "local.synthetic.reviewer@example.invalid"
+        return "local.mock.reviewer@example.invalid"
     raise HTTPException(401, "Microsoft Entra ID authentication is required.")

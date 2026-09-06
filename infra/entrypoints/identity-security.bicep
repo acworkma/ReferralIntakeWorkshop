@@ -6,7 +6,7 @@ param environmentName string = 'dev'
 param uniqueSuffix string
 param privateEndpointSubnetId string
 param keyVaultPrivateDnsZoneId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/identity-security.bicep' = {
   name: 'identity-security'

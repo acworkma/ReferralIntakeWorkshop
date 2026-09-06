@@ -24,10 +24,10 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
         }
       }
       actions: {
-        Record_synthetic_event: {
+        Record_review_event: {
           type: 'Compose'
           inputs: {
-            message: 'Synthetic referral review notification received.'
+            message: 'Referral review notification received.'
             body: '@triggerBody()'
           }
           runAfter: {}

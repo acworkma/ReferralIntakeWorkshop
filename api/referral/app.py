@@ -3,13 +3,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import uuid
 
-from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from .config import settings
 from .database import Referral, SessionLocal, initialize_database
-from .guardrails import validate_synthetic_upload
+from .guardrails import validate_upload
 from .identity import current_user
 from .processing import process_referral, remember_local_payload
 from .storage import enqueue, store_document
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-Data-Classification"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -53,14 +53,11 @@ def list_referrals(user: str = Depends(current_user)) -> list[dict]:
 async def create_referral(
     document: UploadFile,
     user: str = Depends(current_user),
-    x_data_classification: str | None = Header(default=None),
 ) -> dict:
-    filename, content, digest = await validate_synthetic_upload(
-        document, x_data_classification, settings.upload_max_bytes
-    )
+    filename, content, digest = await validate_upload(document, settings.upload_max_bytes)
     with SessionLocal() as session:
         if session.scalar(select(Referral).where(Referral.sha256 == digest)):
-            raise HTTPException(409, "This synthetic document has already been submitted.")
+            raise HTTPException(409, "This document has already been submitted.")
     referral_id = str(uuid.uuid4())
     storage_uri = store_document(referral_id, filename, content)
     referral = Referral(
