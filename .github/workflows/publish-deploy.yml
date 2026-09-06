@@ -36,9 +36,20 @@ jobs:
         if: inputs.deploy_infrastructure
         run: az deployment sub what-if --location "$LOCATION" --template-file infra/main.bicep --parameters infra/main.bicepparam
 
+      - name: Register Entra app
+        # Requires the deploying identity to hold a directory-level Entra role
+        # (Application Administrator / Cloud Application Administrator, or the
+        # Microsoft Graph Application.ReadWrite.All permission) — see docs/deployment.md.
+        if: inputs.deploy_infrastructure
+        run: echo "ENTRA_CLIENT_ID=$(pwsh -File scripts/register-entra-app.ps1)" >> "$GITHUB_ENV"
+
       - name: Deploy infrastructure
         if: inputs.deploy_infrastructure
         run: az deployment sub create --name "referral-${GITHUB_RUN_ID}" --location "$LOCATION" --template-file infra/main.bicep --parameters infra/main.bicepparam
+
+      - name: Set Entra redirect URIs
+        if: inputs.deploy_infrastructure
+        run: pwsh -File scripts/set-entra-redirect-uris.ps1
 
       - name: Discover registry
         run: echo "ACR_NAME=$(az acr list -g "$RESOURCE_GROUP" --query '[0].name' -o tsv)" >> "$GITHUB_ENV"

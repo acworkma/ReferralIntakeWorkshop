@@ -2,16 +2,21 @@
 
 A public-workspace-safe reference implementation for receiving **synthetic** referral documents, comparing Azure AI Document Intelligence with Azure AI Content Understanding, and routing discrepancies through human approval.
 
+This is an Azure workshop: every component runs as an Azure resource (Container Apps, Functions, SQL, Storage, Document Intelligence, Content Understanding) behind a private VNet, and the only supported way to run it is to deploy it to Azure.
+
 ## Quick start
 
-Prerequisites: Docker Desktop with Compose.
+Prerequisites: Azure CLI with current Bicep CLI, and Owner/User Access Administrator plus Contributor on the target subscription.
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up --build
+az bicep upgrade
+.\scripts\register-entra-app.ps1
+az deployment sub create --name referral-deploy --location eastus2 `
+  --template-file infra\main.bicep --parameters infra\main.bicepparam
+.\scripts\set-entra-redirect-uris.ps1
 ```
 
-Open `http://localhost:5173`. Local development uses an intentionally obvious mock identity and synthetic extraction. The Azure Bicep deployment disables both modes, and the API refuses them when running under the Azure Functions environment.
+See [deployment instructions](docs/deployment.md) for full prerequisites, the what-if step, and independent component deployment.
 
 ## Repository map
 
@@ -26,13 +31,5 @@ Open `http://localhost:5173`. Local development uses an intentionally obvious mo
 Start with [deployment instructions](docs/deployment.md), [architecture](docs/architecture.md), and [security](docs/security.md).
 
 > **Safety:** This repository contains no real referral records. Uploads must be synthetic, carry the `X-Data-Classification: synthetic` header, and have a filename beginning with `synthetic-`. Never use production or personal data.
-
-## Developer commands
-
-```powershell
-docker compose up --build
-python -m pytest api\tests
-cd web; npm install; npm run check
-```
 
 All Azure examples use `rg-referralintake` and `eastus2` by default. Names are parameterized and suffixed for global uniqueness.

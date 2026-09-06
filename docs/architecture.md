@@ -16,14 +16,14 @@ Reviewer ──Entra──> private ACA ingress
                                          ├─> Content Understanding
                                          └─> Azure SQL (comparison/progress)
 
-Hub VNet: JIT Windows jumpbox
+Hub VNet: Azure Bastion (Basic) + Windows 11 jumpbox
 Spoke VNet: ACA, Functions integration, private endpoints, private DNS
 Telemetry: App Insights → Log Analytics → alert/dashboard
 ```
 
 ## Data flow
 
-1. Container Apps authentication redirects an unauthenticated reviewer to Microsoft Entra ID. The API rejects requests without the injected principal header. `LOCAL_MOCK_IDENTITY=true` works only outside Azure.
+1. Container Apps authentication redirects an unauthenticated reviewer to Microsoft Entra ID. The API rejects requests without the injected principal header. `LOCAL_MOCK_IDENTITY=true` is a test-only fixture that the API refuses to honor whenever it detects it is running in Azure (`WEBSITE_INSTANCE_ID` set).
 2. The upload endpoint requires the `synthetic-` filename prefix, `X-Data-Classification: synthetic`, an allow-listed MIME type, a matching magic number, and a 10 MiB limit.
 3. The API hashes the file, writes it to the private `referrals` blob container, inserts a queued status in SQL, and sends only the referral ID to Queue Storage.
 4. The Function reads the blob using managed identity, records processing progress, calls both extraction services, and writes a field-level comparison.
@@ -42,7 +42,7 @@ Telemetry: App Insights → Log Analytics → alert/dashboard
 | AI | Document Intelligence + Azure AI Services | Independent extraction paths |
 | Compute | Private ACA + Functions Premium | Internal application and worker |
 | Network | Standalone hub/spoke, NSGs, private DNS/endpoints | Isolation and name resolution |
-| Admin | Windows Server jumpbox with JIT | Time-bound private administration |
+| Admin | Windows 11 jumpbox behind Azure Bastion (Basic) | Private administration via RDP, no public IP on the VM |
 | Security | Key Vault, managed identities, RBAC, Defender | Secretless workload access and posture |
 | Operations | Log Analytics, App Insights, dashboard, alert | Central telemetry and failure detection |
 | Integration | Disabled Consumption Logic App | Reviewed future notification flow |

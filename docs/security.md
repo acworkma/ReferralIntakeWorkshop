@@ -3,8 +3,8 @@
 ## Trust boundaries
 
 - The internet has no route to the application: the Container Apps environment is internal and the Function, SQL, Storage, Key Vault, ACR (when switched), and AI accounts use private endpoints.
-- Access begins from a connected corporate network, VPN/ExpressRoute, or the JIT jumpbox. Microsoft Entra authentication is mandatory at ACA and Function front doors.
-- The API never treats a client-supplied user name as identity. Azure injects the principal; local mode uses the conspicuous `.invalid` mock user.
+- Access begins from a connected corporate network, VPN/ExpressRoute, or an Azure Bastion session to the jumpbox VM. Microsoft Entra authentication is mandatory at ACA and Function front doors.
+- The API never treats a client-supplied user name as identity. Azure injects the principal; the test-only mock identity fixture uses the conspicuous `.invalid` user and is refused whenever the API detects it is running in Azure.
 - Files and queue messages stay on managed-service private links. Queue messages contain IDs, not document contents.
 - Workloads use managed identities; local keys are disabled for Storage, AI, and App Insights.
 
@@ -19,7 +19,6 @@
 | Function identity | Key Vault | Key Vault Secrets User | Future secret references; no list of management plane |
 | ACA identity | ACR | AcrPull | Pull signed/approved workload images |
 | Logic App identity | Storage account | Storage Blob Data Reader | Future read-only notification contract |
-| JIT admin group | Jumpbox VM | Virtual Machine Contributor + Virtual Machine Administrator Login | Request JIT access and sign in |
 
 Azure SQL data-plane permissions are not Azure RBAC. From a private administrative host, run `scripts/bootstrap-sql.sql` as the configured Entra administrator. Remove `db_ddladmin` after first schema initialization; retain `db_datareader`/`db_datawriter`.
 

@@ -4,7 +4,7 @@
 
 - Azure CLI with current Bicep CLI (`az bicep upgrade`)
 - Owner or User Access Administrator plus Contributor at the target subscription
-- Microsoft Entra app registration with redirect URI `https://<private-app-fqdn>/.auth/login/aad/callback`
+- A directory-level Entra role capable of managing app registrations (e.g. **Application Administrator** or **Cloud Application Administrator**, or the Microsoft Graph `Application.ReadWrite.All` permission) for whichever identity runs `scripts/register-entra-app.ps1`/`scripts/set-entra-redirect-uris.ps1` — a human via `az login`, or the CI OIDC service principal. This is a directory permission, distinct from Azure RBAC, and can't be granted through Bicep/ARM.
 - Entra group for SQL administration
 - Private DNS/network reachability for administration and a VNet-connected CI runner
 
@@ -15,7 +15,13 @@ $providers = 'Microsoft.App','Microsoft.Web','Microsoft.Storage','Microsoft.Sql'
 $providers | ForEach-Object { az provider register --namespace $_ }
 ```
 
-Set the five environment variables referenced by `infra/main.bicepparam`: `AZURE_UNIQUE_SUFFIX`, `ENTRA_CLIENT_ID`, `SQL_ADMIN_GROUP_OBJECT_ID`, `JUMPBOX_ADMIN_GROUP_OBJECT_ID`, and `JUMPBOX_ADMIN_PASSWORD`. Keep the password in CI environment secrets, never in a checked-in parameter file.
+Create the Microsoft Entra app registration used by Container Apps/Function "Easy Auth" (`scripts/register-entra-app.ps1` finds-or-creates it by a stable name and prints the client ID as its only pipeline output):
+
+```powershell
+$env:ENTRA_CLIENT_ID = .\scripts\register-entra-app.ps1
+```
+
+Set the remaining four environment variables referenced by `infra/main.bicepparam`: `AZURE_UNIQUE_SUFFIX`, `SQL_ADMIN_GROUP_OBJECT_ID`, `JUMPBOX_ADMIN_GROUP_OBJECT_ID`, and `JUMPBOX_ADMIN_PASSWORD`. Keep the password in CI environment secrets, never in a checked-in parameter file.
 
 ## Root deployment and what-if
 
@@ -33,7 +39,13 @@ az deployment sub create `
   --parameters infra\main.bicepparam
 ```
 
-The root creates `rg-referralintake`. It intentionally deploys Microsoft sample placeholders first because a new ACR is empty. Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion Developer to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
+The root creates `rg-referralintake`. It intentionally deploys Microsoft sample placeholders first because a new ACR is empty. After the root deployment completes, patch the app registration's redirect URIs now that the Container Apps/Function hostnames exist:
+
+```powershell
+.\scripts\set-entra-redirect-uris.ps1
+```
+
+Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion (Basic SKU) to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
 
 ## Independent components
 
@@ -63,4 +75,4 @@ After deploying a private runner with private DNS reachability, set `acrPublicNe
 
 ## CI identity
 
-Configure GitHub environment variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` for workload identity federation—no client secret. Grant the deployment identity least privilege. See [Azure Login with OIDC](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect) and [Bicep what-if](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-what-if).
+Configure GitHub environment variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` for workload identity federation—no client secret. Grant the deployment identity least privilege at the subscription (Azure RBAC), plus the directory-level app-registration role described in Prerequisites if the CI pipeline runs `scripts/register-entra-app.ps1`/`scripts/set-entra-redirect-uris.ps1` (see `.github/workflows/publish-deploy.yml`). See [Azure Login with OIDC](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect) and [Bicep what-if](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-what-if).
