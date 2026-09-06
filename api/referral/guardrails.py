@@ -12,6 +12,13 @@ SIGNATURES = {
 }
 
 
+def sniff_media_type(content: bytes) -> str:
+    for media_type, signatures in SIGNATURES.items():
+        if any(content.startswith(signature) for signature in signatures):
+            return media_type
+    return "application/octet-stream"
+
+
 async def validate_upload(upload: UploadFile, max_bytes: int) -> tuple[str, bytes, str]:
     filename = PurePath(upload.filename or "").name
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,200}", filename):

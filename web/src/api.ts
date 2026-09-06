@@ -28,6 +28,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("Your session has expired. Reloading to sign in again.");
   }
 
+  // 204 responses carry no body and no content-type, so settle them first.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     const text = await response.text().catch(() => "");
@@ -67,4 +72,5 @@ export const api = {
     const query = new URLSearchParams({ approved: String(approved), note });
     return request<Referral>(`/api/referrals/${id}/review?${query}`, { method: "POST" });
   },
+  remove: (id: string) => request<void>(`/api/referrals/${id}`, { method: "DELETE" }),
 };

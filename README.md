@@ -23,7 +23,7 @@ See [deployment instructions](docs/deployment.md) for full prerequisites, the wh
 | Path | Purpose |
 |---|---|
 | `web/` | React, Vite, and TypeScript operator experience |
-| `api/` | FastAPI application, Azure Functions HTTP adapter, and queue worker |
+| `api/` | FastAPI application, in-container queue worker, diagnostics, and an optional Azure Functions adapter |
 | `infra/` | Modular Bicep and independently deployable entry points |
 | `docs/` | Architecture, security, deployment, operations, and caveats |
 | `samples/` | Sample referral documents for exercising the upload flow |

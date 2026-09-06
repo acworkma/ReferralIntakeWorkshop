@@ -9,12 +9,11 @@ Reviewer ──Entra──> private ACA ingress
                        ├─ web (nginx + React)
                        └─ API sidecar ──> Azure SQL (status/audit)
                                       ├─> Blob Storage (source documents)
-                                      └─> Queue Storage
-                                               │
-                                      Python Function worker
-                                         ├─> Document Intelligence
-                                         ├─> Content Understanding
-                                         └─> Azure SQL (comparison/progress)
+                                      ├─> Queue Storage
+                                      └─ queue worker thread
+                                               ├─> Document Intelligence
+                                               ├─> Content Understanding
+                                               └─> Azure SQL (comparison/progress)
 
 Hub VNet: Azure Bastion (Basic) + Windows 11 jumpbox
 Spoke VNet: ACA, Functions integration, private endpoints, private DNS
@@ -26,8 +25,8 @@ Telemetry: App Insights → Log Analytics → alert/dashboard
 1. Container Apps authentication redirects an unauthenticated reviewer to Microsoft Entra ID. The API rejects requests without the injected principal header. `LOCAL_MOCK_IDENTITY=true` is a test-only fixture that the API refuses to honor whenever it detects it is running in Azure (`WEBSITE_INSTANCE_ID` set).
 2. The upload endpoint requires an allow-listed MIME type, a matching magic number, and a 10 MiB limit.
 3. The API hashes the file, writes it to the private `referrals` blob container, inserts a queued status in SQL, and sends only the referral ID to Queue Storage.
-4. The Function reads the blob using managed identity, records processing progress, calls both extraction services, and writes a field-level comparison.
-5. The web UI polls SQL-backed API state. A reviewer sees confidence and disagreements, then approves or rejects with an audit note.
+4. A queue-worker thread inside the API container reads the blob using managed identity, records processing progress, calls both extraction services, and writes a field-level comparison. Running the worker in the API container means a deployment that only rolls the container images is fully functional; the message stays on the queue until it succeeds, and after `QUEUE_MAX_DEQUEUE` attempts the referral is marked `failed` and the message moves to `referral-jobs-poison`.
+5. The web UI polls SQL-backed API state. A reviewer sees confidence and disagreements, then approves or rejects with an audit note, and can delete a referral to remove it and free its document for re-upload.
 6. The disabled Logic App is an intentional extension point for approved outbound notifications. Enable it only after its connector, destination, and data contract pass security review.
 
 ## Components
@@ -36,7 +35,7 @@ Telemetry: App Insights → Log Analytics → alert/dashboard
 |---|---|---|
 | Web | React 19, Vite, TypeScript, nginx | Responsive queue/review UI and same-origin API proxy |
 | API | FastAPI sidecar | Validation, identity interpretation, status, and review endpoints |
-| Worker | Python Azure Functions queue trigger | Asynchronous dual extraction |
+| Worker | Queue-consumer thread in the API container | Asynchronous dual extraction with retry and poison handling |
 | Queue/blob | StorageV2 ZRS | Durable jobs and source documents |
 | Status | Azure SQL | Workflow state, comparisons, decisions, and reviewer identity |
 | AI | Document Intelligence + Azure AI Services | Independent extraction paths |

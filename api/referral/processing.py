@@ -13,13 +13,15 @@ def remember_local_payload(referral_id: str, content: bytes) -> None:
     _local_payloads[referral_id] = content
 
 
+def forget_local_payload(referral_id: str) -> None:
+    _local_payloads.pop(referral_id, None)
+
+
 def process_referral(referral_id: str) -> None:
     with SessionLocal() as session:
         referral = session.scalar(select(Referral).where(Referral.id == referral_id))
         if not referral:
             return
-        if referral.status == "failed":
-            raise RuntimeError("Previous processing failed; moving message toward poison queue.")
         if referral.status not in {"queued", "processing"}:
             return
         referral.status = "processing"
@@ -36,10 +38,22 @@ def process_referral(referral_id: str) -> None:
             referral.comparison_json = json.dumps(compare(content, referral.sha256))
             referral.status = "needs_review"
             referral.progress = 100
-        except (KeyError, OSError, RuntimeError, TypeError, ValueError):
-            referral.status = "failed"
-            referral.progress = 100
-            raise
-        finally:
             session.commit()
-            _local_payloads.pop(referral_id, None)
+        except Exception:
+            # Leave the referral in "processing" so the queue retry can try again.
+            # mark_failed records the terminal state once retries are exhausted.
+            session.rollback()
+            raise
+        _local_payloads.pop(referral_id, None)
+
+
+def mark_failed(referral_id: str) -> None:
+    """Records the terminal failure once the queue has exhausted its retries."""
+    with SessionLocal() as session:
+        referral = session.get(Referral, referral_id)
+        if not referral or referral.status not in {"queued", "processing"}:
+            return
+        referral.status = "failed"
+        referral.progress = 100
+        session.commit()
+    _local_payloads.pop(referral_id, None)

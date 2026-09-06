@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Moon,
   Sun,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -102,6 +103,26 @@ function App() {
       setNote("");
     } catch (reason) {
       setError(toMessage(reason, "Review could not be saved."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(referral: Referral) {
+    if (!window.confirm(`Delete "${referral.filename}"? This also frees the document for re-upload.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.remove(referral.id);
+      setReferrals((rows) => {
+        const remaining = rows.filter((row) => row.id !== referral.id);
+        setSelectedId((current) => (current === referral.id ? remaining[0]?.id ?? null : current));
+        return remaining;
+      });
+      setError("");
+    } catch (reason) {
+      setError(toMessage(reason, "The referral could not be deleted."));
     } finally {
       setBusy(false);
     }
@@ -235,6 +256,14 @@ function App() {
                     <p>Submitted by {selected.submittedBy}</p>
                   </div>
                   <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
+                  <button
+                    className="secondary danger"
+                    disabled={busy}
+                    onClick={() => remove(selected)}
+                    aria-label={`Delete ${selected.filename}`}
+                  >
+                    <Trash2 size={17} /> Delete
+                  </button>
                 </div>
 
                 {(selected.status === "queued" || selected.status === "processing") && (
@@ -297,6 +326,19 @@ function App() {
                       <button className="primary" disabled={busy} onClick={() => decide(true)}>
                         <Check size={18} /> Approve extraction
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {selected.status === "failed" && (
+                  <div className="final-state rejected">
+                    <X size={20} />
+                    <div>
+                      <strong>Extraction failed</strong>
+                      <span>
+                        The document could not be processed after several attempts. Delete it to try
+                        again, and check the API container logs for the underlying error.
+                      </span>
                     </div>
                   </div>
                 )}

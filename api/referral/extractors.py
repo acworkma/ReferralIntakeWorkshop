@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import base64
 import hashlib
 import time
 
@@ -6,6 +7,7 @@ import httpx
 from azure.identity import DefaultAzureCredential
 
 from .config import settings
+from .guardrails import sniff_media_type
 
 
 @dataclass
@@ -84,12 +86,23 @@ def content_understanding(content: bytes, digest: str) -> Extraction:
         raise RuntimeError("CONTENT_UNDERSTANDING_ENDPOINT is required.")
     url = (
         f"{settings.content_understanding_endpoint.rstrip('/')}/contentunderstanding/"
-        "analyzers/prebuilt-document:analyze?api-version=2025-05-01-preview"
+        f"analyzers/{settings.content_understanding_analyzer}:analyze"
+        f"?api-version={settings.content_understanding_api_version}"
     )
-    headers = {"Authorization": f"Bearer {_token()}", "Content-Type": "application/octet-stream"}
-    response = httpx.post(url, headers=headers, content=content, timeout=30)
+    auth = {"Authorization": f"Bearer {_token()}"}
+    # Content Understanding takes JSON with base64 inputs, not a raw binary body.
+    payload = {
+        "inputs": [
+            {
+                "name": "referral",
+                "data": base64.b64encode(content).decode("ascii"),
+                "mimeType": sniff_media_type(content),
+            }
+        ]
+    }
+    response = httpx.post(url, headers=auth, json=payload, timeout=60)
     response.raise_for_status()
-    result = _poll(response.headers["operation-location"], headers)
+    result = _poll(response.headers["operation-location"], auth)
     content_result = result.get("result", {}).get("contents", [{}])[0]
     fields = content_result.get("fields", {})
     return Extraction(

@@ -1,9 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import logging
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from azure.core.exceptions import AzureError
+from fastapi import Depends, FastAPI, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
@@ -11,14 +13,43 @@ from .config import settings
 from .database import Referral, SessionLocal, initialize_database
 from .guardrails import validate_upload
 from .identity import current_user
-from .processing import process_referral, remember_local_payload
-from .storage import enqueue, store_document
+from .processing import (
+    forget_local_payload,
+    mark_failed,
+    process_referral,
+    remember_local_payload,
+)
+from .storage import delete_document, enqueue, store_document
+from .worker import QueueWorker
+
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
+    )
+    # The Azure SDKs log every HTTP request at INFO, which drowns out app logs.
+    for noisy in ("azure.core.pipeline.policies.http_logging_policy", "azure.identity"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+_configure_logging()
+
+queue_worker = QueueWorker()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
-    yield
+    queue_worker.start()
+    try:
+        yield
+    finally:
+        queue_worker.stop()
 
 
 app = FastAPI(title="Referral Intake Reference API", version="1.0.0", lifespan=lifespan)
@@ -31,9 +62,22 @@ app.add_middleware(
 )
 
 
+def _process_inline(referral_id: str) -> None:
+    """Fallback used only when no queue is configured; the queue worker handles the rest."""
+    try:
+        process_referral(referral_id)
+    except Exception:
+        logger.exception("Inline processing failed for referral %s.", referral_id)
+        mark_failed(referral_id)
+
+
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status": "ok",
+        "time": datetime.now(timezone.utc).isoformat(),
+        "queueWorker": "running" if queue_worker.alive else "stopped",
+    }
 
 
 @app.get("/api/me")
@@ -74,7 +118,7 @@ async def create_referral(
         session.commit()
     remember_local_payload(referral_id, content)
     if not enqueue(referral_id):
-        asyncio.create_task(asyncio.to_thread(process_referral, referral_id))
+        asyncio.create_task(asyncio.to_thread(_process_inline, referral_id))
     return referral.response()
 
 
@@ -86,6 +130,25 @@ def get_referral(referral_id: str, user: str = Depends(current_user)) -> dict:
         if not referral:
             raise HTTPException(404, "Referral not found.")
         return referral.response()
+
+
+@app.delete("/api/referrals/{referral_id}", status_code=204)
+def delete_referral(referral_id: str, user: str = Depends(current_user)) -> Response:
+    del user
+    with SessionLocal() as session:
+        referral = session.get(Referral, referral_id)
+        if not referral:
+            raise HTTPException(404, "Referral not found.")
+        storage_uri = referral.storage_uri
+        session.delete(referral)
+        session.commit()
+    forget_local_payload(referral_id)
+    if storage_uri:
+        try:
+            delete_document(storage_uri)
+        except (AzureError, OSError, ValueError):
+            logger.warning("Referral %s row deleted but its blob remains.", referral_id)
+    return Response(status_code=204)
 
 
 @app.post("/api/referrals/{referral_id}/review")

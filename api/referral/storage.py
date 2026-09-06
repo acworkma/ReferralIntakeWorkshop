@@ -21,6 +21,12 @@ def load_document(storage_uri: str) -> bytes:
     ).download_blob(max_concurrency=2).readall()
 
 
+def delete_document(storage_uri: str) -> None:
+    BlobClient.from_blob_url(
+        storage_uri, credential=DefaultAzureCredential()
+    ).delete_blob(delete_snapshots="include")
+
+
 def enqueue(referral_id: str) -> bool:
     if not settings.queue_account_url:
         return False
