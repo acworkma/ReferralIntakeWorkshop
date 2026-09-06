@@ -5,7 +5,7 @@
 1. Inspect the Azure dashboard and the `Referral processing failures` scheduled-query alert.
 2. Query queue age, poison queue depth, Function failures, ACA restarts, SQL connectivity, authentication failures, and AI throttling.
 3. Confirm no real-data incident signals. Stop intake immediately if a filename, support report, or scan indicates non-synthetic content.
-4. Review RBAC quarterly. Rotate the jumpbox admin password through a controlled secret process, or replace password access with Entra-based VM login.
+4. Review RBAC quarterly. Rotate the jumpbox admin password by resetting it on the VM (VM Access extension, `az vm user update`, or a redeploy with a new `JUMPBOX_ADMIN_PASSWORD`) and updating the `jumpbox-admin-password` Key Vault secret to match — the two are independent stores and are not kept in sync automatically. Or replace password access with Entra-based VM login.
 5. Patch dependencies and base images, rebuild by commit SHA, validate, then use a single ACA active revision for rollback safety.
 
 Useful KQL:
