@@ -26,10 +26,11 @@ See [deployment instructions](docs/deployment.md) for full prerequisites, the wh
 | `api/` | FastAPI application, Azure Functions HTTP adapter, and queue worker |
 | `infra/` | Modular Bicep and independently deployable entry points |
 | `docs/` | Architecture, security, deployment, operations, and caveats |
+| `samples/` | Synthetic sample referral documents for exercising the upload flow |
 | `.github/workflows/` | Validation and OIDC-based image/deployment delivery |
 
 Start with [deployment instructions](docs/deployment.md), [architecture](docs/architecture.md), and [security](docs/security.md).
 
-> **Safety:** This repository contains no real referral records. Uploads must be synthetic, carry the `X-Data-Classification: synthetic` header, and have a filename beginning with `synthetic-`. Never use production or personal data.
+> **Safety:** This repository contains no real referral records. Uploads must be synthetic, carry the `X-Data-Classification: synthetic` header, and have a filename beginning with `synthetic-`. Never use production or personal data. See [`samples/`](samples/README.md) for ready-to-use synthetic documents covering every intake channel.
 
 All Azure examples use `rg-referralintake` and `eastus2` by default. Names are parameterized and suffixed for global uniqueness.
