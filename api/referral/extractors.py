@@ -8,6 +8,7 @@ from azure.identity import DefaultAzureCredential
 
 from .config import settings
 from .guardrails import sniff_media_type
+from .schema import COMPARABLE_FIELDS, FIELDS, QUERY_FIELDS
 
 
 @dataclass
@@ -17,21 +18,34 @@ class Extraction:
     confidence: dict[str, float]
 
 
-FIELDS = ("referralType", "priority", "service", "requestedDate", "summary")
+_DEMO_VALUES = {
+    "patientName": "Rowan Alvarez",
+    "patientDateOfBirth": "1948-03-22",
+    "medicalRecordNumber": "MRN-441703",
+    "referringProvider": "Dr. Priya Raman, Lakeview Family Medicine",
+    "referringProviderNpi": "1000000012",
+    "priority": "Routine",
+    "requestedService": "Skilled nursing",
+    "primaryDiagnosis": "Congestive heart failure exacerbation",
+    "diagnosisCode": "I50.9",
+    "payer": "Example Health Plan",
+    "authorizationNumber": "AUTH-55012",
+    "requestedDate": "2030-01-15",
+    "summary": "Demonstration referral generated locally; no service call was made.",
+}
 
 
 def _demo_extraction(engine: str, digest: str) -> Extraction:
     seed = int(digest[:8], 16)
     is_cu = engine == "Content Understanding"
+    fields = dict(_DEMO_VALUES)
+    # Make the two engines disagree on one row so the comparison view has
+    # something to show when running without Azure.
+    if is_cu and seed % 2:
+        fields["priority"] = "Urgent"
     return Extraction(
         engine=engine,
-        fields={
-            "referralType": "Demo specialist consultation",
-            "priority": "Routine" if (seed + int(is_cu)) % 3 else "Expedited",
-            "service": "Demo care navigation",
-            "requestedDate": "2030-01-15",
-            "summary": "Generated demonstration referral; contains no personal data.",
-        },
+        fields=fields,
         confidence={
             field: round(0.80 + ((seed >> index) % 17) / 100, 2)
             for index, field in enumerate(FIELDS)
@@ -66,17 +80,30 @@ def document_intelligence(content: bytes, digest: str) -> Extraction:
     url = (
         f"{settings.document_intelligence_endpoint.rstrip('/')}/documentintelligence/"
         "documentModels/prebuilt-layout:analyze?api-version=2024-11-30"
+        f"&features=queryFields&queryFields={','.join(QUERY_FIELDS)}"
     )
     headers = {"Authorization": f"Bearer {_token()}", "Content-Type": "application/octet-stream"}
     response = httpx.post(url, headers=headers, content=content, timeout=30)
     response.raise_for_status()
     result = _poll(response.headers["operation-location"], headers)
-    text = result["analyzeResult"].get("content", "")
-    return Extraction(
-        "Document Intelligence",
-        {"summary": text[:500], **{field: "Review required" for field in FIELDS[:-1]}},
-        {field: 0.0 for field in FIELDS},
-    )
+    analyze = result.get("analyzeResult", {})
+    documents = analyze.get("documents") or [{}]
+    extracted = documents[0].get("fields", {})
+
+    fields: dict[str, str] = {}
+    confidence: dict[str, float] = {}
+    for field in FIELDS:
+        found = extracted.get(field) or {}
+        value = found.get("valueString") or found.get("content") or ""
+        fields[field] = value.strip() or "Not found"
+        confidence[field] = float(found.get("confidence", 0.0))
+
+    # Layout does not generate prose, so summarise from the recognised text.
+    if not extracted.get("summary"):
+        text = " ".join(analyze.get("content", "").split())
+        fields["summary"] = text[:400] or "Not found"
+        confidence["summary"] = 0.0
+    return Extraction("Document Intelligence", fields, confidence)
 
 
 def content_understanding(content: bytes, digest: str) -> Extraction:
@@ -104,15 +131,25 @@ def content_understanding(content: bytes, digest: str) -> Extraction:
     response.raise_for_status()
     result = _poll(response.headers["operation-location"], auth)
     content_result = result.get("result", {}).get("contents", [{}])[0]
-    fields = content_result.get("fields", {})
-    return Extraction(
-        "Content Understanding",
-        {
-            field: str(fields.get(field, {}).get("valueString", "Review required"))
-            for field in FIELDS
-        },
-        {field: float(fields.get(field, {}).get("confidence", 0)) for field in FIELDS},
-    )
+    extracted = content_result.get("fields", {})
+
+    fields: dict[str, str] = {}
+    confidence: dict[str, float] = {}
+    for field in FIELDS:
+        found = extracted.get(field) or {}
+        fields[field] = _field_value(found)
+        confidence[field] = float(found.get("confidence", 0.0))
+    return Extraction("Content Understanding", fields, confidence)
+
+
+def _field_value(found: dict) -> str:
+    """Read whichever typed value slot Content Understanding populated."""
+    for key in ("valueString", "valueDate", "valueTime", "valueNumber", "valueInteger"):
+        if found.get(key) not in (None, ""):
+            return str(found[key])
+    if found.get("valueBoolean") is not None:
+        return "Yes" if found["valueBoolean"] else "No"
+    return "Not found"
 
 
 def compare(content: bytes, digest: str) -> dict:
@@ -128,11 +165,22 @@ def compare(content: bytes, digest: str) -> dict:
                 "contentUnderstanding": right,
                 "documentIntelligenceConfidence": first.confidence.get(field, 0),
                 "contentUnderstandingConfidence": second.confidence.get(field, 0),
-                "matches": left.casefold().strip() == right.casefold().strip(),
+                "matches": _values_agree(left, right),
             }
         )
+    # Generated prose is expected to differ, so agreement is scored on the
+    # fields that have a single correct answer.
+    scored = [row for row in rows if row["field"] in COMPARABLE_FIELDS]
+    agreement = round(sum(row["matches"] for row in scored) / len(scored) * 100)
     return {
         "rows": rows,
-        "agreementPercent": round(sum(row["matches"] for row in rows) / len(rows) * 100),
+        "agreementPercent": agreement,
         "contentSha256": hashlib.sha256(content).hexdigest(),
     }
+
+
+def _values_agree(left: str, right: str) -> bool:
+    def normalise(value: str) -> str:
+        return " ".join(value.casefold().replace(",", " ").split()).strip(" .")
+
+    return normalise(left) == normalise(right)

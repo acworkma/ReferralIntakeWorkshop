@@ -142,6 +142,9 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'QUEUE_NAME', value: 'referral-jobs' }
             { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
             { name: 'CONTENT_UNDERSTANDING_ENDPOINT', value: contentUnderstandingEndpoint }
+            { name: 'CONTENT_UNDERSTANDING_ANALYZER', value: 'referralIntake' }
+            { name: 'CONTENT_UNDERSTANDING_COMPLETION_DEPLOYMENT', value: 'gpt-5.2' }
+            { name: 'CONTENT_UNDERSTANDING_EMBEDDING_DEPLOYMENT', value: 'text-embedding-3-large' }
             { name: 'LOCAL_MOCK_IDENTITY', value: 'false' }
             { name: 'ALLOW_LOCAL_MOCK_EXTRACTION', value: 'false' }
           ]

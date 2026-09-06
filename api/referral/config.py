@@ -30,10 +30,24 @@ class Settings:
     document_intelligence_endpoint: str | None = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
     content_understanding_endpoint: str | None = os.getenv("CONTENT_UNDERSTANDING_ENDPOINT")
     content_understanding_analyzer: str = os.getenv(
-        "CONTENT_UNDERSTANDING_ANALYZER", "prebuilt-document"
+        # Content Understanding rejects '-' in analyzer IDs.
+        "CONTENT_UNDERSTANDING_ANALYZER",
+        "referralIntake",
     )
     content_understanding_api_version: str = os.getenv(
         "CONTENT_UNDERSTANDING_API_VERSION", "2025-11-01"
+    )
+    content_understanding_completion_model: str = os.getenv(
+        "CONTENT_UNDERSTANDING_COMPLETION_MODEL", "gpt-5.2"
+    )
+    content_understanding_embedding_model: str = os.getenv(
+        "CONTENT_UNDERSTANDING_EMBEDDING_MODEL", "text-embedding-3-large"
+    )
+    content_understanding_completion_deployment: str = os.getenv(
+        "CONTENT_UNDERSTANDING_COMPLETION_DEPLOYMENT", "gpt-5.2"
+    )
+    content_understanding_embedding_deployment: str = os.getenv(
+        "CONTENT_UNDERSTANDING_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
     )
 
     def validate(self) -> None:

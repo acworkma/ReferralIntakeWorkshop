@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
+import threading
 import uuid
 
 from azure.core.exceptions import AzureError
@@ -9,8 +10,10 @@ from fastapi import Depends, FastAPI, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
+from .analyzer import ensure_analyzer
 from .config import settings
 from .database import Referral, SessionLocal, initialize_database
+from .extractors import _token as _extraction_token
 from .guardrails import validate_upload
 from .identity import current_user
 from .processing import (
@@ -45,6 +48,15 @@ queue_worker = QueueWorker()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    # Analyzer creation is a slow, network-bound call against a private
+    # endpoint. Run it off the startup path so a slow or unreachable AI
+    # account cannot stall the container's readiness probe.
+    threading.Thread(
+        target=ensure_analyzer,
+        args=(_extraction_token,),
+        name="analyzer-provisioner",
+        daemon=True,
+    ).start()
     queue_worker.start()
     try:
         yield

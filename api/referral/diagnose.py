@@ -164,9 +164,25 @@ def _delete_referrals(targets: list[str]) -> int:
     return 0
 
 
+def _provision_analyzer() -> int:
+    """Create the custom analyzer and show what it extracts."""
+    from .analyzer import analyzer_definition, ensure_analyzer
+    from .extractors import _token
+
+    print(f"analyzer: {settings.content_understanding_analyzer}")
+    print(f"completion: {settings.content_understanding_completion_deployment}")
+    print(f"embedding: {settings.content_understanding_embedding_deployment}")
+    print(f"fields: {', '.join(analyzer_definition()['fieldSchema']['fields'])}\n")
+    ok = ensure_analyzer(_token)
+    print("\nAnalyzer ready." if ok else "\nAnalyzer provisioning failed.")
+    return 0 if ok else 1
+
+
 def main() -> int:
     if "--list" in sys.argv:
         return _list_referrals()
+    if "--analyzer" in sys.argv:
+        return _provision_analyzer()
     if "--delete" in sys.argv:
         targets = sys.argv[sys.argv.index("--delete") + 1 :]
         if not targets:
@@ -192,7 +208,10 @@ def main() -> int:
             failures += 1
             print(f"FAILED: {type(error).__name__}: {error}")
         else:
-            print(f"OK: engine={result.engine} fields={sorted(result.fields)}")
+            print(f"OK: engine={result.engine}")
+            for field, value in result.fields.items():
+                score = result.confidence.get(field, 0.0)
+                print(f"    {field:>22}: {value[:60]!r} ({score:.0%})")
     print("\nAll extraction endpoints reachable." if not failures else f"\n{failures} check(s) failed.")
     return 1 if failures else 0
 
