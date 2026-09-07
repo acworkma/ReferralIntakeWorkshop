@@ -75,9 +75,13 @@ az containerapp exec -g $RG -n $APP --container api --command "python -m referra
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --queue"
 
 # Inspect and clear referrals when SQL is otherwise unreachable.
+# --list prints id, status, progress, and the container the document is in.
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --list"
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --delete <referral-id>"
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --delete failed"
+
+# Show a referral's extracted rows and which ones the review UI flags, and why.
+az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --compare latest"
 
 # Drive a decision through Box 7 without a browser session.
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --review <referral-id> approve"

@@ -1,4 +1,4 @@
-import type { Delivery, Identity, Referral } from "./types";
+import type { Delivery, Health, Identity, Referral } from "./types";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -58,6 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<Health>("/api/health"),
   me: () => request<Identity>("/api/me"),
   list: () => request<Referral[]>("/api/referrals"),
   /**

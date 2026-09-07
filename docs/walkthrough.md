@@ -130,6 +130,20 @@ You should see `Executing Functions.ReferralIntake`, the handler's own messages,
 
 **Be clear with your audience:** the second engine is an addition to the reference architecture, not a copy of it. It is here because it makes the human-in-the-loop step demonstrably valuable instead of ceremonial.
 
+**What the highlighted rows mean.** A row is flagged when the two engines *read the document differently*, which is not the same thing as low confidence and is the more useful signal. An engine can report 100% confidence and still be wrong; a disagreement between two independent reads is what surfaces that. In the review UI you will see rows where both engines are highly confident and still disagree - those are exactly the rows worth a human's attention.
+
+Two things deliberately do *not* get flagged, because flagging them trains reviewers to ignore the highlight:
+
+- **Formatting differences.** An NPI read as `1000 000079` by one engine and `1000000079` by the other is the same value. Whitespace is ignored when comparing. Punctuation is not, so `J44.1` against `144.1` stays flagged - that one is a real OCR error.
+- **The generated summary.** Two engines will always word prose differently, so the summary is shown side by side and labelled as prose rather than reported as a disagreement.
+
+To see the same decision from the command line, including which rows are flagged and why:
+
+```bash
+az containerapp exec -g rg-referralintake -n ca-referralintake-web-dev --container api \
+  --command "python -m referral.diagnose --compare latest"
+```
+
 **Why Document Intelligence for one side.** It is layout-grounded: it reads a scanned fax or a handwritten form as a document with structure, and returns coordinates and per-field confidence.
 
 **Why Content Understanding for the other.** It works from a schema you define - the fields in `api/referral/schema.py` - and reasons about the content. On a clean digital PDF it is comparable; on a messy one it fails differently, which is what makes the comparison informative.
@@ -185,6 +199,12 @@ az rest --method GET --url "https://management.azure.com/subscriptions/<sub>/res
 **What it is not.** It is not the pipeline, and it never calls it. Delivering a document returns `202` with no referral id, because at that moment no referral exists - only a blob. The id appears when the function creates it, and the app finds out by polling like any other observer.
 
 If you take one thing from this walkthrough, take that: **you could delete the web app and the pipeline would keep working.**
+
+**What the screen shows.** Two views, and the split is real: **In flight** is anything the workflow still owns (claimed, extracting, awaiting review), **Decided** is anything that is finished (approved, returned, failed). Every referral is in exactly one of them.
+
+Selecting a referral shows its position in the pipeline as a four step trail - Landed, Extracting, Awaiting review, Closed - and under the current step, **the container the document is physically in right now**. That is not a label the UI invented. The API reads it back off the blob URI, because in this design the container *is* the state. If you watch a document move from `incoming` to `processing` to `archive`, you are watching the same thing the storage account would tell you.
+
+The one state worth waiting for is the first: right after you deliver, the document sits in `incoming` and the list shows it as **Landed, not yet claimed**. Nothing in the browser is making the next thing happen. That gap is the event reaching the function.
 
 **Portal path.** Container App `ca-referralintake-web-dev` -> **Revisions** shows the active revision and both containers (`web` and `api`). -> **Ingress** shows it is internal to the VNet. -> **Authentication** shows Easy Auth in front of everything.
 
