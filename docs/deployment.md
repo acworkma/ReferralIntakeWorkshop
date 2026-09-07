@@ -95,6 +95,29 @@ az deployment group create -g rg-referralintake `
 
 Use the same `az deployment group what-if/create` pattern for `observability`, `identity-security`, `data`, `ai`, `compute`, `integration`, `bastion`, and `jumpbox`. Deploy in that order (`bastion` and `jumpbox` both depend on `network`'s hub VNet/subnet outputs and can be deployed in either order relative to each other). Deploy Defender with `az deployment sub what-if/create --location eastus2 --template-file infra\entrypoints\defender.bicep`.
 
+## Event Grid and Defender for Storage share one slot
+
+Azure allows **exactly one system topic per source**, and it enforces it:
+
+```
+(InvalidRequest) There is an existing tracked system topic <name> for the given
+source <storage-account>. Only one system topic is allowed per source.
+```
+
+Defender for Storage's on-upload malware scanning also wants a system topic on the storage account, so the two can collide. Verified behaviour, tested against a live subscription with Defender for Storage V2 and `OnUploadMalwareScanning` enabled:
+
+- **A fresh deployment is not affected.** The template creates the storage account and `evgt-referralintake-dev` seconds apart, so it takes the slot before Defender reaches the new account. This was confirmed by creating a new storage account under the enabled plan and creating the topic immediately - it succeeded.
+- **Once the workload's topic exists, Defender cannot displace it.** The second create is refused by Azure, so the pipeline cannot be broken by Defender arriving later. Defender silently goes without malware scanning on that account, which is a trade-off to be aware of rather than a deployment failure.
+- **Redeploying onto a storage account that has been live for a while is the case that fails**, because Defender has already claimed the slot. The error names the existing topic. Delete Defender's subscription and topic, then rerun the deployment:
+
+  ```powershell
+  az eventgrid system-topic event-subscription delete -g rg-referralintake `
+    --system-topic-name <defender-topic> -n StorageAntimalwareSubscription --yes
+  az eventgrid system-topic delete -g rg-referralintake -n <defender-topic> --yes
+  ```
+
+If malware scanning matters more than the trigger for a given account, the inverse is also supportable: leave Defender's topic in place and point the workload's event subscription at it instead of creating one.
+
 ## ACR public/private choice
 
 `acrPublicNetworkAccess=true` is the default so hosted build systems can push during bootstrap. Premium ACR still has a private endpoint, admin credentials are disabled, and anonymous pull is disabled. Public access expands the network surface even though Entra/RBAC still protects it.
