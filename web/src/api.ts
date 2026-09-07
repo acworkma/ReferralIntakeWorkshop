@@ -1,4 +1,4 @@
-import type { Identity, Referral } from "./types";
+import type { Delivery, Identity, Referral } from "./types";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -60,10 +60,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   me: () => request<Identity>("/api/me"),
   list: () => request<Referral[]>("/api/referrals"),
-  upload: (file: File) => {
+  /**
+   * Stands in for an upstream system delivering a document. This only writes to
+   * the landing zone; the workflow that picks it up is triggered by the write.
+   */
+  deliver: (file: File) => {
     const body = new FormData();
     body.append("document", file);
-    return request<Referral>("/api/referrals", {
+    return request<Delivery>("/api/referrals", {
       method: "POST",
       body,
     });

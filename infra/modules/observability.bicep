@@ -43,7 +43,11 @@ resource failedJobs 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
     criteria: {
       allOf: [
         {
-          query: 'AppTraces | where Message has "referral" and SeverityLevel >= 3'
+          // The orchestration function is where a referral fails, so this reads
+          // the function's own logs rather than App Insights traces. isfuzzy
+          // keeps the rule valid on a fresh deployment, before either table
+          // has received its first row.
+          query: 'union isfuzzy=true (FunctionAppLogs | where Level == "Error" | project TimeGenerated), (ContainerAppConsoleLogs_CL | where Log_s has "failed during processing" | project TimeGenerated)'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -55,43 +59,6 @@ resource failedJobs 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
       ]
     }
     autoMitigate: true
-  }
-}
-
-resource dashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
-  name: guid(resourceGroup().id, workloadName, environmentName, 'dashboard')
-  location: location
-  tags: union(tags, { 'hidden-title': 'Referral intake operations' })
-  properties: {
-    lenses: [
-      {
-        order: 0
-        parts: [
-          {
-            position: {
-              x: 0
-              y: 0
-              colSpan: 12
-              rowSpan: 4
-            }
-            metadata: {
-              type: 'Extension/HubsExtension/PartType/MarkdownPart'
-              settings: {
-                content: {
-                  settings: {
-                    title: 'Referral intake operations'
-                    content: 'Workshop reference environment. Monitor failed jobs, authentication failures, queue age, and extraction latency.'
-                  }
-                }
-              }
-            }
-          }
-        ]
-      }
-    ]
-    metadata: {
-      description: 'Referral intake operations dashboard. Add environment-specific Azure Monitor tiles after deployment.'
-    }
   }
 }
 

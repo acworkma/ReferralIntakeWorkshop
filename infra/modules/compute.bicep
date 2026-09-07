@@ -12,6 +12,8 @@ param functionSubnetId string
 param privateEndpointSubnetId string
 param sitesPrivateDnsZoneId string
 param logAnalyticsCustomerId string
+@description('Resource ID of the Log Analytics workspace, used for Function App diagnostics.')
+param logAnalyticsWorkspaceId string
 @secure()
 param logAnalyticsSharedKey string
 @secure()
@@ -26,7 +28,32 @@ param sqlDatabaseName string
 param documentIntelligenceEndpoint string
 param contentUnderstandingEndpoint string
 param acrLoginServer string
+@description('Callback URL for the notification Logic App request trigger.')
+@secure()
+param logicAppUrl string
+@description('Image tag deployed by the publish pipeline. The placeholder images are replaced on first publish.')
+param imageTag string = ''
 param tags object
+
+var incomingContainer = 'incoming'
+var processingContainer = 'processing'
+var failedContainer = 'failed'
+var archiveContainer = 'archive'
+var queueName = 'referral-jobs'
+
+// Until the publish pipeline has pushed real images, deploy runnable placeholders so
+// the template stands up on its own. The Functions base image starts the host with no
+// functions in it, which is exactly what a placeholder should do.
+var apiImage = empty(imageTag)
+  ? 'mcr.microsoft.com/azuredocs/aci-helloworld:latest'
+  : '${acrLoginServer}/referral-api:${imageTag}'
+var webImage = empty(imageTag)
+  ? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+  : '${acrLoginServer}/referral-web:${imageTag}'
+var functionImage = empty(imageTag)
+  ? 'mcr.microsoft.com/azure-functions/python:4-python3.12'
+  : '${acrLoginServer}/referral-func:${imageTag}'
+
 
 resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: 'cae-${workloadName}-${environmentName}'
@@ -116,7 +143,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'web'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+          image: webImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
             { name: 'API_BASE_URL', value: 'http://127.0.0.1:7071' }
@@ -132,14 +159,19 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
         }
         {
           name: 'api'
-          image: 'mcr.microsoft.com/azuredocs/aci-helloworld:latest'
+          image: apiImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
             { name: 'DATABASE_URL', value: 'mssql+pyodbc://@${sqlServerFqdn}/${sqlDatabaseName}?driver=ODBC+Driver+18+for+SQL+Server&authentication=ActiveDirectoryMsi&UID=${containerAppsIdentityClientId}' }
             { name: 'AZURE_CLIENT_ID', value: containerAppsIdentityClientId }
             { name: 'STORAGE_ACCOUNT_URL', value: 'https://${storageAccountName}.blob.${environment().suffixes.storage}' }
             { name: 'QUEUE_ACCOUNT_URL', value: 'https://${storageAccountName}.queue.${environment().suffixes.storage}' }
-            { name: 'QUEUE_NAME', value: 'referral-jobs' }
+            { name: 'QUEUE_NAME', value: queueName }
+            { name: 'INCOMING_CONTAINER', value: incomingContainer }
+            { name: 'PROCESSING_CONTAINER', value: processingContainer }
+            { name: 'FAILED_CONTAINER', value: failedContainer }
+            { name: 'ARCHIVE_CONTAINER', value: archiveContainer }
+            { name: 'LOGIC_APP_URL', value: logicAppUrl }
             { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
             { name: 'CONTENT_UNDERSTANDING_ENDPOINT', value: contentUnderstandingEndpoint }
             { name: 'CONTENT_UNDERSTANDING_ANALYZER', value: 'referralIntake' }
@@ -221,7 +253,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     virtualNetworkSubnetId: functionSubnetId
     keyVaultReferenceIdentity: functionIdentityId
     siteConfig: {
-      linuxFxVersion: 'Python|3.12'
+      linuxFxVersion: 'DOCKER|${functionImage}'
+      acrUseManagedIdentityCreds: true
+      acrUserManagedIdentityID: functionIdentityClientId
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       alwaysOn: true
@@ -229,13 +263,20 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       appSettings: [
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+        { name: 'DOCKER_REGISTRY_SERVER_URL', value: 'https://${acrLoginServer}' }
+        { name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE', value: 'false' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
         { name: 'AzureWebJobsStorage__accountName', value: storageAccountName }
         { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
         { name: 'AzureWebJobsStorage__clientId', value: functionIdentityClientId }
         { name: 'STORAGE_ACCOUNT_URL', value: 'https://${storageAccountName}.blob.${environment().suffixes.storage}' }
         { name: 'QUEUE_ACCOUNT_URL', value: 'https://${storageAccountName}.queue.${environment().suffixes.storage}' }
-        { name: 'QUEUE_NAME', value: 'referral-jobs' }
+        { name: 'QUEUE_NAME', value: queueName }
+        { name: 'INCOMING_CONTAINER', value: incomingContainer }
+        { name: 'PROCESSING_CONTAINER', value: processingContainer }
+        { name: 'FAILED_CONTAINER', value: failedContainer }
+        { name: 'ARCHIVE_CONTAINER', value: archiveContainer }
+        { name: 'LOGIC_APP_URL', value: logicAppUrl }
         {
           name: 'DATABASE_URL'
           value: 'mssql+pyodbc://@${sqlServerFqdn}/${sqlDatabaseName}?driver=ODBC+Driver+18+for+SQL+Server&authentication=ActiveDirectoryMsi&UID=${functionIdentityClientId}'
@@ -243,6 +284,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AZURE_CLIENT_ID', value: functionIdentityClientId }
         { name: 'DOCUMENT_INTELLIGENCE_ENDPOINT', value: documentIntelligenceEndpoint }
         { name: 'CONTENT_UNDERSTANDING_ENDPOINT', value: contentUnderstandingEndpoint }
+        { name: 'CONTENT_UNDERSTANDING_ANALYZER', value: 'referralIntake' }
+        { name: 'CONTENT_UNDERSTANDING_COMPLETION_DEPLOYMENT', value: 'gpt-5.2' }
+        { name: 'CONTENT_UNDERSTANDING_EMBEDDING_DEPLOYMENT', value: 'text-embedding-3-large' }
         { name: 'LOCAL_MOCK_IDENTITY', value: 'false' }
         { name: 'ALLOW_LOCAL_MOCK_EXTRACTION', value: 'false' }
       ]
@@ -297,6 +341,23 @@ resource functionDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGrou
   properties: {
     privateDnsZoneConfigs: [
       { name: 'sites', properties: { privateDnsZoneId: sitesPrivateDnsZoneId } }
+    ]
+  }
+}
+
+// Without this the Function App is a black box: public network access is off,
+// which also turns off SCM, so the portal's log stream cannot reach it either.
+// Log Analytics is the only way to see what the host is doing.
+resource functionDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'diag-${functionApp.name}'
+  scope: functionApp
+  properties: {
+    workspaceId: logAnalyticsWorkspaceId
+    logs: [
+      { category: 'FunctionAppLogs', enabled: true }
+    ]
+    metrics: [
+      { category: 'AllMetrics', enabled: true }
     ]
   }
 }

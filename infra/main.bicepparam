@@ -8,6 +8,9 @@ param workloadName = 'referralintake'
 param environmentName = 'dev'
 param acrPublicNetworkAccess = true
 param deployJumpbox = true
+// Empty on a first deployment; the publish pipeline supplies the built tag afterwards.
+param imageTag = readEnvironmentVariable('IMAGE_TAG', '')
+param containerAppsDefaultDomain = readEnvironmentVariable('CONTAINER_APPS_DEFAULT_DOMAIN', '')
 
 // Supply these at deployment time or copy this file outside source control.
 param uniqueSuffix = readEnvironmentVariable('AZURE_UNIQUE_SUFFIX')

@@ -7,7 +7,7 @@ param keyVaultPrivateDnsZoneId string
 @description('Jumpbox VM admin password, persisted to Key Vault as a secret so it has a durable, RBAC-governed home after deployment.')
 @secure()
 param jumpboxAdminPassword string = ''
-@description('Object ID of the Entra group granted read access to the jumpbox admin password secret.')
+@description('Object ID of the Entra group or user granted read access to the jumpbox admin password secret.')
 param jumpboxAdminGroupObjectId string = ''
 @description('Whether to persist the jumpbox admin password to Key Vault. Set false when the jumpbox is not being deployed.')
 param storeJumpboxPassword bool = true
@@ -40,19 +40,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource functionSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, functionIdentity.id, 'Key Vault Secrets User')
-  scope: keyVault
-  properties: {
-    principalId: functionIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '4633458b-17de-408a-b874-0445c86b69e6'
-    )
-  }
-}
-
 resource jumpboxPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (storeJumpboxPassword) {
   parent: keyVault
   name: 'jumpbox-admin-password'
@@ -61,12 +48,14 @@ resource jumpboxPasswordSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = 
   }
 }
 
+// principalType is deliberately left unset so this accepts either a group or an
+// individual user object ID. Naming a type that does not match the principal fails
+// the whole deployment, which is a poor trade for a hint ARM can infer itself.
 resource jumpboxAdminSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (storeJumpboxPassword && !empty(jumpboxAdminGroupObjectId)) {
   name: guid(keyVault.id, jumpboxAdminGroupObjectId, 'Key Vault Secrets User')
   scope: keyVault
   properties: {
     principalId: jumpboxAdminGroupObjectId
-    principalType: 'Group'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       '4633458b-17de-408a-b874-0445c86b69e6'

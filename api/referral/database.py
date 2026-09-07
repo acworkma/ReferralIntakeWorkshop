@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -23,6 +23,8 @@ class Referral(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     submitted_by: Mapped[str] = mapped_column(String(255))
     storage_uri: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    source: Mapped[str] = mapped_column(String(64), default="upstream")
+    failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     comparison_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     review_note: Mapped[str | None] = mapped_column(String(2000), nullable=True)
@@ -43,6 +45,8 @@ class Referral(Base):
             "status": self.status,
             "progress": self.progress,
             "submittedBy": self.submitted_by,
+            "source": self.source,
+            "failureReason": self.failure_reason,
             "comparison": json.loads(self.comparison_json) if self.comparison_json else None,
             "approved": self.approved,
             "reviewNote": self.review_note,
@@ -66,3 +70,32 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Add columns the model has gained since the table was first created.
+
+    create_all() only creates tables that do not exist, so a workshop
+    environment deployed against an earlier schema keeps an old table forever.
+    This is additive only: it never drops or retypes anything, which keeps a
+    redeploy safe to run against a database that already holds referrals.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table(Referral.__tablename__):
+        return
+    existing = {column["name"] for column in inspector.get_columns(Referral.__tablename__)}
+    missing = [column for column in Referral.__table__.columns if column.name not in existing]
+    if not missing:
+        return
+    compiler = engine.dialect.type_compiler_instance
+    with engine.begin() as connection:
+        for column in missing:
+            definition = f"{column.name} {compiler.process(column.type)} NULL"
+            connection.execute(
+                text(f"ALTER TABLE {Referral.__tablename__} ADD {definition}")
+            )
+        if any(column.name == "source" for column in missing):
+            connection.execute(
+                text(f"UPDATE {Referral.__tablename__} SET source = 'upstream' WHERE source IS NULL")
+            )

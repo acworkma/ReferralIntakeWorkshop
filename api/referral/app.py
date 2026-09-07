@@ -1,6 +1,15 @@
-import asyncio
+"""Boxes 1 and 6: the two ends of the pipeline the workshop has to stand in for.
+
+This service deliberately does not run the workflow. It drops a document into
+the landing zone the way an upstream system would, and it shows a reviewer what
+the workflow produced. Everything in between belongs to Event Grid and the
+orchestration function, so that the pipeline behaves identically whether a
+document arrives from this app, from azcopy, or from a real referral source.
+"""
+
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import json
 import logging
 import threading
 import uuid
@@ -14,16 +23,15 @@ from .analyzer import ensure_analyzer
 from .config import settings
 from .database import Referral, SessionLocal, initialize_database
 from .extractors import _token as _extraction_token
-from .guardrails import validate_upload
 from .identity import current_user
-from .processing import (
-    forget_local_payload,
-    mark_failed,
-    process_referral,
-    remember_local_payload,
+from .intake import handle_event
+from .review import ReviewRejected, decide
+from .storage import (
+    delete_document,
+    store_incoming,
+    using_azure_storage,
 )
-from .storage import delete_document, enqueue, store_document
-from .worker import QueueWorker
+from .uploads import validate_upload
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +50,6 @@ def _configure_logging() -> None:
 
 _configure_logging()
 
-queue_worker = QueueWorker()
-
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -57,30 +63,40 @@ async def lifespan(_: FastAPI):
         name="analyzer-provisioner",
         daemon=True,
     ).start()
-    queue_worker.start()
-    try:
-        yield
-    finally:
-        queue_worker.stop()
+    yield
 
 
-app = FastAPI(title="Referral Intake Reference API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Referral Intake Reference API", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
 
-def _process_inline(referral_id: str) -> None:
-    """Fallback used only when no queue is configured; the queue worker handles the rest."""
+def _raise_local_event(storage_uri: str, filename: str) -> None:
+    """Stands in for Event Grid when there is no storage account.
+
+    In Azure the storage account raises this event itself and Event Grid puts it
+    on the queue. On a laptop nothing does, so the same event is synthesised and
+    handed to the same handler rather than calling the pipeline a second way.
+    """
+    event = json.dumps(
+        {
+            "id": str(uuid.uuid4()),
+            "eventType": "Microsoft.Storage.BlobCreated",
+            "subject": f"/blobServices/default/containers/{settings.incoming_container}"
+            f"/blobs/{filename}",
+            "eventTime": datetime.now(timezone.utc).isoformat(),
+            "data": {"api": "PutBlob", "url": storage_uri},
+        }
+    )
     try:
-        process_referral(referral_id)
-    except Exception:
-        logger.exception("Inline processing failed for referral %s.", referral_id)
-        mark_failed(referral_id)
+        handle_event(event)
+    except Exception:  # noqa: BLE001 - mirrors the function host swallowing and logging
+        logger.exception("Local pipeline run failed for %s.", filename)
 
 
 @app.get("/api/health")
@@ -88,7 +104,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "time": datetime.now(timezone.utc).isoformat(),
-        "queueWorker": "running" if queue_worker.alive else "stopped",
+        "landingZone": "azure" if using_azure_storage() else "local",
     }
 
 
@@ -106,32 +122,41 @@ def list_referrals(user: str = Depends(current_user)) -> list[dict]:
 
 
 @app.post("/api/referrals", status_code=202)
-async def create_referral(
+async def deliver_referral(
     document: UploadFile,
     user: str = Depends(current_user),
 ) -> dict:
+    """Delivers a document to the landing zone, standing in for an upstream system.
+
+    The response deliberately describes a delivery, not a referral. No referral
+    exists yet: the blob write raises an event, and the orchestration function
+    is what creates the record. Watch the queue for it to appear.
+    """
     filename, content, digest = await validate_upload(document, settings.upload_max_bytes)
     with SessionLocal() as session:
         if session.scalar(select(Referral).where(Referral.sha256 == digest)):
             raise HTTPException(409, "This document has already been submitted.")
-    referral_id = str(uuid.uuid4())
-    storage_uri = store_document(referral_id, filename, content)
-    referral = Referral(
-        id=referral_id,
-        filename=filename,
-        sha256=digest,
-        status="queued",
-        progress=5,
-        submitted_by=user,
-        storage_uri=storage_uri,
+
+    storage_uri = store_incoming(
+        filename,
+        content,
+        metadata={"submittedby": user, "source": "web-simulator"},
     )
-    with SessionLocal() as session:
-        session.add(referral)
-        session.commit()
-    remember_local_payload(referral_id, content)
-    if not enqueue(referral_id):
-        asyncio.create_task(asyncio.to_thread(_process_inline, referral_id))
-    return referral.response()
+    if not using_azure_storage():
+        threading.Thread(
+            target=_raise_local_event,
+            args=(storage_uri, filename),
+            name=f"local-event-{filename}",
+            daemon=True,
+        ).start()
+
+    logger.info("Delivered %s to the %s container.", filename, settings.incoming_container)
+    return {
+        "filename": filename,
+        "container": settings.incoming_container,
+        "deliveredAt": datetime.now(timezone.utc).isoformat(),
+        "message": "Delivered to the landing zone. The workflow picks it up from here.",
+    }
 
 
 @app.get("/api/referrals/{referral_id}")
@@ -154,12 +179,11 @@ def delete_referral(referral_id: str, user: str = Depends(current_user)) -> Resp
         storage_uri = referral.storage_uri
         session.delete(referral)
         session.commit()
-    forget_local_payload(referral_id)
     if storage_uri:
         try:
             delete_document(storage_uri)
         except (AzureError, OSError, ValueError):
-            logger.warning("Referral %s row deleted but its blob remains.", referral_id)
+            logger.warning("Referral %s row deleted but its document remains.", referral_id)
     return Response(status_code=204)
 
 
@@ -170,18 +194,8 @@ def review_referral(
     note: str = "",
     user: str = Depends(current_user),
 ) -> dict:
-    if len(note) > 2000:
-        raise HTTPException(400, "Review note cannot exceed 2,000 characters.")
-    with SessionLocal() as session:
-        referral = session.get(Referral, referral_id)
-        if not referral:
-            raise HTTPException(404, "Referral not found.")
-        if referral.status != "needs_review":
-            raise HTTPException(409, "Only referrals awaiting review can be decided.")
-        referral.approved = approved
-        referral.review_note = note.strip()
-        referral.reviewed_by = user
-        referral.status = "approved" if approved else "rejected"
-        referral.updated_at = datetime.now(timezone.utc)
-        session.commit()
-        return referral.response()
+    """Box 6 to Box 7: records the human decision and hands off to the workflow."""
+    try:
+        return decide(referral_id, approved, note, user)
+    except ReviewRejected as rejected:
+        raise HTTPException(rejected.status, rejected.message) from rejected

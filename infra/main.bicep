@@ -27,6 +27,8 @@ param acrPublicNetworkAccess bool = true
 param deployJumpbox bool = true
 @description('Container Apps environment default domain. Set after initial deployment to provision private ingress DNS.')
 param containerAppsDefaultDomain string = ''
+@description('Image tag to deploy for the web, api, and function images. Leave empty on a first deployment: the template then uses public placeholder images so it can stand up before any image exists.')
+param imageTag string = ''
 param tags object = {
   workload: workloadName
   environment: environmentName
@@ -128,13 +130,37 @@ module registry 'modules/registry.bicep' = {
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
     acrPrivateDnsZoneId: network.outputs.acrPrivateDnsZoneId
     containerAppsPrincipalId: identity.outputs.containerAppsPrincipalId
+    functionPrincipalId: identity.outputs.functionPrincipalId
     tags: tags
   }
 }
 
+module integration 'modules/integration.bicep' = {
+  scope: resourceGroup
+  name: 'integration'
+  params: {
+    location: location
+    workloadName: workloadName
+    environmentName: environmentName
+    logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
+    tags: tags
+  }
+}
+
+// Reading the callback URL here keeps the SAS-signed trigger address out of the
+// template's own outputs. It reaches the function and the API as a secure parameter.
+var notificationWorkflowTriggerId = resourceId(
+  subscription().subscriptionId,
+  resourceGroupName,
+  'Microsoft.Logic/workflows/triggers',
+  'logic-${workloadName}-notification-${environmentName}',
+  'manual'
+)
+
 module compute 'modules/compute.bicep' = {
   scope: resourceGroup
   name: 'compute'
+  dependsOn: [integration]
   params: {
     location: location
     workloadName: workloadName
@@ -149,6 +175,7 @@ module compute 'modules/compute.bicep' = {
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
     sitesPrivateDnsZoneId: network.outputs.sitesPrivateDnsZoneId
     logAnalyticsCustomerId: observability.outputs.logAnalyticsCustomerId
+    logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
     logAnalyticsSharedKey: observability.outputs.logAnalyticsSharedKey
     appInsightsConnectionString: observability.outputs.appInsightsConnectionString
     containerAppsIdentityId: identity.outputs.containerAppsIdentityId
@@ -161,19 +188,8 @@ module compute 'modules/compute.bicep' = {
     documentIntelligenceEndpoint: ai.outputs.documentIntelligenceEndpoint
     contentUnderstandingEndpoint: ai.outputs.contentUnderstandingEndpoint
     acrLoginServer: registry.outputs.loginServer
-    tags: tags
-  }
-}
-
-module integration 'modules/integration.bicep' = {
-  scope: resourceGroup
-  name: 'integration'
-  params: {
-    location: location
-    workloadName: workloadName
-    environmentName: environmentName
-    storageAccountId: data.outputs.storageAccountId
-    logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
+    imageTag: imageTag
+    logicAppUrl: listCallbackUrl(notificationWorkflowTriggerId, '2019-05-01').value
     tags: tags
   }
 }
@@ -207,6 +223,19 @@ module bastion 'modules/bastion.bicep' = {
 module security 'modules/defender.bicep' = {
   name: 'defender'
   params: {}
+}
+
+// Deployed last on purpose. See eventing.bicep for why.
+module eventing 'modules/eventing.bicep' = {
+  scope: resourceGroup
+  name: 'eventing'
+  dependsOn: [compute, integration, bastion]
+  params: {
+    systemTopicName: data.outputs.eventGridSystemTopicName
+    storageAccountId: data.outputs.storageAccountId
+    incomingContainer: data.outputs.incomingContainer
+    jobsQueueName: data.outputs.jobsQueueName
+  }
 }
 
 output resourceGroupName string = resourceGroup.name

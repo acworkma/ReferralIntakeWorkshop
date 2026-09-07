@@ -27,6 +27,10 @@ param sqlDatabaseName string
 param documentIntelligenceEndpoint string
 param contentUnderstandingEndpoint string
 param acrLoginServer string
+param imageTag string = ''
+param logAnalyticsWorkspaceId string
+@secure()
+param logicAppUrl string = ''
 param tags object = { managedBy: 'bicep' }
 
 module component '../modules/compute.bicep' = {
@@ -57,6 +61,9 @@ module component '../modules/compute.bicep' = {
     documentIntelligenceEndpoint: documentIntelligenceEndpoint
     contentUnderstandingEndpoint: contentUnderstandingEndpoint
     acrLoginServer: acrLoginServer
+    imageTag: imageTag
+    logAnalyticsWorkspaceId: logAnalyticsWorkspaceId
+    logicAppUrl: logicAppUrl
     tags: tags
   }
 }

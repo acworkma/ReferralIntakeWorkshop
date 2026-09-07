@@ -7,6 +7,8 @@ param publicNetworkAccess bool
 param privateEndpointSubnetId string
 param acrPrivateDnsZoneId string
 param containerAppsPrincipalId string
+@description('Principal that pulls the orchestration function image.')
+param functionPrincipalId string
 param tags object
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
@@ -32,6 +34,19 @@ resource pullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: registry
   properties: {
     principalId: containerAppsPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+    )
+  }
+}
+
+resource functionPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(registry.id, functionPrincipalId, 'AcrPull')
+  scope: registry
+  properties: {
+    principalId: functionPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
