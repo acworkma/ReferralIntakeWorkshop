@@ -104,12 +104,52 @@ def document_intelligence(content: bytes, digest: str) -> Extraction:
         fields[field] = value or "Not found"
         confidence[field] = score
 
-    # Layout does not generate prose, so summarise from the recognised text.
+    # Layout extracts, it does not generate prose. Dumping raw recognised text
+    # here just surfaces whatever happens to be at the top of the page, which
+    # for an email attachment is the transport headers. Compose the summary
+    # from the fields it actually extracted instead; the honest difference in
+    # how the two engines reach a summary is the point of the comparison.
     if not extracted.get("summary"):
-        text = " ".join(analyze.get("content", "").split())
-        fields["summary"] = text[:400] or "Not found"
+        fields["summary"] = _compose_summary(fields)
         confidence["summary"] = 0.0
     return Extraction("Document Intelligence", fields, confidence)
+
+
+def _compose_summary(fields: dict[str, str]) -> str:
+    """Assemble a readable summary from extracted fields, skipping blanks."""
+
+    def value(name: str) -> str:
+        found = fields.get(name, "")
+        return "" if found in {"", "Not found"} else found
+
+    patient, service = value("patientName"), value("requestedService")
+    if not patient and not service:
+        return "Not found"
+
+    subject = patient or "The patient"
+    sentence = (
+        f"{subject} was referred for {service.lower()}." if service
+        else f"A referral was received for {subject}."
+    )
+
+    diagnosis = value("primaryDiagnosis")
+    if diagnosis:
+        code = value("diagnosisCode")
+        sentence += f" Primary diagnosis is {diagnosis.lower()}"
+        sentence += f" ({code})." if code else "."
+
+    priority, requested = value("priority"), value("requestedDate")
+    if priority and requested:
+        sentence += f" Priority is {priority.lower()}, with care requested to start {requested}."
+    elif priority:
+        sentence += f" Priority is {priority.lower()}."
+    elif requested:
+        sentence += f" Care is requested to start {requested}."
+
+    provider = value("referringProvider")
+    if provider:
+        sentence += f" Referred by {provider}."
+    return sentence
 
 
 def content_understanding(content: bytes, digest: str) -> Extraction:

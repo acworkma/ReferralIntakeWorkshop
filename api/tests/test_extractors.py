@@ -1,5 +1,30 @@
-from referral.extractors import _values_agree, compare
+from referral.extractors import _compose_summary, _values_agree, compare
 from referral.schema import COMPARABLE_FIELDS, FIELDS, QUERY_FIELDS, analyzer_field_schema
+
+
+def test_composed_summary_reads_as_prose_not_raw_text():
+    summary = _compose_summary(
+        {
+            "patientName": "Marcus Oyelaran",
+            "requestedService": "Physical therapy",
+            "primaryDiagnosis": "Status post right total knee arthroplasty",
+            "diagnosisCode": "Z96.651",
+            "priority": "Routine",
+            "requestedDate": "2030-03-11",
+            "referringProvider": "Helen Zhao, MD",
+        }
+    )
+    assert summary.startswith("Marcus Oyelaran was referred for physical therapy.")
+    assert "Z96.651" in summary
+    assert "2030-03-11" in summary
+
+
+def test_composed_summary_skips_missing_fields():
+    # "Not found" must never leak into the prose, and a document with nothing
+    # usable reports that plainly instead of inventing a sentence.
+    summary = _compose_summary({"patientName": "Rowan Alvarez", "priority": "Not found"})
+    assert "Not found" not in summary
+    assert _compose_summary({"patientName": "Not found"}) == "Not found"
 
 
 def test_comparison_has_traceable_fields():
