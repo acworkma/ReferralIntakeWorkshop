@@ -123,16 +123,38 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 10px 12px;
+  border: 0;
   border-radius: 7px;
   color: #aeb6cc;
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  background: none;
+  cursor: pointer;
 }
 
 .nav-item:hover,
 .nav-item.active {
   color: #ffffff;
   background: #292d46;
+}
+
+.nav-count {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 650;
+  color: #dfe4f5;
+  background: #454b66;
+}
+
+.nav-item.active .nav-count {
+  color: #1c1f33;
+  background: #cdd4ea;
 }
 
 .rail-bottom {

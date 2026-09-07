@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { applyTheme, initialTheme, type Theme } from "./theme";
 import type { Identity, Referral, Status } from "./types";
+import { awaitingDecision, countFor, referralsFor, type View } from "./views";
 
 const statusLabel: Record<Status, string> = {
   queued: "Queued",
@@ -52,7 +53,13 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [awaitingPickup, setAwaitingPickup] = useState<string[]>([]);
+  const [view, setView] = useState<View>("inflight");
   const fileInput = useRef<HTMLInputElement>(null);
+
+  const visible = referralsFor(view, referrals);
+  const inFlightCount = countFor("inflight", referrals);
+  const decidedCount = countFor("decided", referrals);
+  const needingDecision = awaitingDecision(referrals);
 
   const refresh = useCallback(async () => {
     try {
@@ -159,14 +166,26 @@ function App() {
           RI
         </div>
         <nav>
-          <a className="nav-item active" href="#queue" aria-current="page">
+          <button
+            type="button"
+            className={`nav-item ${view === "inflight" ? "active" : ""}`}
+            aria-current={view === "inflight" ? "page" : undefined}
+            onClick={() => setView("inflight")}
+          >
             <Inbox size={19} />
-            <span>Queue</span>
-          </a>
-          <a className="nav-item" href="#review">
+            <span>In flight</span>
+            {inFlightCount > 0 && <em className="nav-count">{inFlightCount}</em>}
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${view === "decided" ? "active" : ""}`}
+            aria-current={view === "decided" ? "page" : undefined}
+            onClick={() => setView("decided")}
+          >
             <FileCheck2 size={19} />
-            <span>Review</span>
-          </a>
+            <span>Decided</span>
+            {decidedCount > 0 && <em className="nav-count">{decidedCount}</em>}
+          </button>
         </nav>
         <div className="rail-bottom">
           <label className="theme-label" htmlFor="theme">
@@ -215,8 +234,14 @@ function App() {
           <section className="queue-pane" id="queue">
             <div className="section-head">
               <div>
-                <h2>Intake queue</h2>
-                <p>{referrals.length} referrals</p>
+                <h2>{view === "inflight" ? "In flight" : "Decided"}</h2>
+                <p>
+                  {view === "inflight"
+                    ? needingDecision > 0
+                      ? `${visible.length} in the workflow, ${needingDecision} waiting on you`
+                      : `${visible.length} in the workflow`
+                    : `${visible.length} closed out`}
+                </p>
               </div>
               <input
                 ref={fileInput}
@@ -236,7 +261,7 @@ function App() {
               </button>
             </div>
 
-            {awaitingPickup.length > 0 && (
+            {view === "inflight" && awaitingPickup.length > 0 && (
               <div className="awaiting" role="status">
                 <LoaderCircle className="spin" size={17} />
                 <div>
@@ -254,17 +279,29 @@ function App() {
             )}
 
             <div className="queue-list" role="list">
-              {referrals.length === 0 ? (
+              {visible.length === 0 ? (
                 <div className="empty">
                   <FileUp size={32} />
-                  <h3>Nothing has reached the review queue</h3>
-                  <p>
-                    Deliver a PDF, PNG, or JPEG to the landing zone, or drop one straight into the
-                    storage account with azcopy. Either way the same workflow picks it up.
-                  </p>
+                  {view === "inflight" ? (
+                    <>
+                      <h3>Nothing is in the workflow</h3>
+                      <p>
+                        Deliver a PDF, PNG, or JPEG to the landing zone, or drop one straight into
+                        the storage account with azcopy. Either way the same workflow picks it up.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3>Nothing has been decided yet</h3>
+                      <p>
+                        Approved, returned, and failed referrals collect here once a reviewer has
+                        acted on them.
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
-                referrals.map((referral) => (
+                visible.map((referral) => (
                   <button
                     role="listitem"
                     key={referral.id}
