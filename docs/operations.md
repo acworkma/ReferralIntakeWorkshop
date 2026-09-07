@@ -35,7 +35,28 @@ az containerapp exec -g $RG -n $APP --container api --command "python -m referra
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --list"
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --delete <referral-id>"
 az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --delete failed"
+
+# Create or refresh the Content Understanding custom analyzer.
+az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --analyzer"
+
+# Push the sample corpus through the real pipeline and grade both engines.
+az containerapp exec -g $RG -n $APP --container api --command "python -m referral.diagnose --score"
 ```
+
+`--analyzer` is the only supported way to provision the analyzer by hand. The AI account has public network access disabled, so it cannot be created from CI or a workstation; the API also does this automatically at startup, and it is safe to rerun. It compares the live field schema against `api/referral/schema.py` and replaces the analyzer when they differ, because analyzers are immutable once created and editing the schema would otherwise silently have no effect.
+
+`--score` uploads every document in `samples/` through the real blob -> queue -> worker path, compares the result against the ground truth in `samples/manifest.json`, and prints per-document and corpus accuracy for each engine before cleaning up after itself. The sample corpus ships inside the API image for this reason. Use it after changing `schema.py`, a field description, or an extractor to confirm the change actually helped:
+
+```
+=== fax-referral-transmission.png (Fax Systems, hard) ===
+    documentIntelligence: 12/12 (100%)
+    contentUnderstanding: 12/12 (100%)
+=== Corpus totals ===
+    documentIntelligence: 70/72 (97%)
+    contentUnderstanding: 70/72 (97%)
+```
+
+Expect the handwritten scan to miss a field or two. That is the corpus doing its job: those are the referrals the human review step exists for.
 
 `GET /api/health` reports `queueWorker: running|stopped`. If it reports `stopped`, referrals stay `queued` because nothing drains `referral-jobs`; check the API container logs for `referral.worker` entries.
 
