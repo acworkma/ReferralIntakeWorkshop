@@ -28,4 +28,6 @@ This sample rejects unapproved types, oversized content, MIME/signature mismatch
 
 Before any sensitive-data use, add malware scanning, content disarm/reconstruction where required, data-loss-prevention policy, legal retention, immutable audit export, customer-managed keys if mandated, and a formal privacy/security assessment. [Microsoft Defender for Storage malware scanning](https://learn.microsoft.com/azure/defender-for-cloud/on-upload-malware-scanning) is recommended.
 
+One interaction to plan for: Defender's on-upload malware scanning delivers through an Event Grid system topic, and Azure allows only one system topic per storage account - a slot this workload's trigger already occupies. Scanning documents before they reach the pipeline therefore needs a deliberate design rather than just enabling the plan. See [deployment](deployment.md#event-grid-and-defender-for-storage-share-one-slot).
+
 Defender plans are subscription-level and may affect unrelated resources and billing. Review them before deployment. Learn about [Defender for Cloud plans](https://learn.microsoft.com/azure/defender-for-cloud/defender-for-cloud-introduction) and [managed identities](https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview).
