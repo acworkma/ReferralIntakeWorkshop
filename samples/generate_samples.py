@@ -643,19 +643,19 @@ def render_scanned_png(scenario: Scenario, path: Path) -> None:
 # --------------------------------------------------------------------------
 
 RENDERERS = {
-    "portal-chf": ("referral-portal-submission.pdf", render_portal_pdf),
-    "fax-wound": ("fax-referral-transmission.png", render_fax_png),
-    "email-ortho": ("email-attachment-referral.pdf", render_email_pdf),
-    "scan-copd": ("scanned-intake-form.png", render_scanned_png),
-    "packet-stroke": ("provider-referral-packet.pdf", render_packet_pdf),
-    "partner-hospice": ("partner-network-referral.pdf", render_partner_pdf),
+    "portal-chf": ("referral-portal-submission.pdf", render_portal_pdf, "easy"),
+    "fax-wound": ("fax-referral-transmission.png", render_fax_png, "hard"),
+    "email-ortho": ("email-attachment-referral.pdf", render_email_pdf, "easy"),
+    "scan-copd": ("scanned-intake-form.png", render_scanned_png, "hard"),
+    "packet-stroke": ("provider-referral-packet.pdf", render_packet_pdf, "medium"),
+    "partner-hospice": ("partner-network-referral.pdf", render_partner_pdf, "medium"),
 }
 
 
 def main() -> None:
     documents = []
     for scenario in SCENARIOS:
-        filename, renderer = RENDERERS[scenario.key]
+        filename, renderer, difficulty = RENDERERS[scenario.key]
         target = OUT_DIR / filename
         renderer(scenario, target)
         documents.append(
@@ -663,11 +663,7 @@ def main() -> None:
                 "file": filename,
                 "channel": scenario.channel,
                 "scenario": scenario.key,
-                "difficulty": (
-                    "hard" if scenario.ambiguous_fields
-                    else "medium" if target.suffix == ".png"
-                    else "easy"
-                ),
+                "difficulty": difficulty,
                 "expected": expected_fields(scenario),
                 "reviewerMustConfirm": list(scenario.ambiguous_fields),
                 "notes": scenario.notes,

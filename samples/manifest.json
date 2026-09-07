@@ -100,7 +100,7 @@
       "file": "provider-referral-packet.pdf",
       "channel": "Provider Referral Packets",
       "scenario": "packet-stroke",
-      "difficulty": "easy",
+      "difficulty": "medium",
       "expected": {
         "patientName": "Theodore Kaminski",
         "patientDateOfBirth": "1953-09-08",
@@ -122,7 +122,7 @@
       "file": "partner-network-referral.pdf",
       "channel": "External Healthcare Partners",
       "scenario": "partner-hospice",
-      "difficulty": "easy",
+      "difficulty": "medium",
       "expected": {
         "patientName": "Junko Halvorsen",
         "patientDateOfBirth": "1936-12-19",

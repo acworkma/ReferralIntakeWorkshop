@@ -36,7 +36,12 @@ SCHEMA: tuple[Field, ...] = (
         type="date",
     ),
     Field("medicalRecordNumber", "Patient medical record number (MRN) or chart number."),
-    Field("referringProvider", "Name of the clinician or organization making the referral."),
+    Field(
+        "referringProvider",
+        "Full name of the individual clinician making the referral, including "
+        "their credential such as MD or DO. Do not return the practice or "
+        "hospital name here.",
+    ),
     Field(
         "referringProviderNpi",
         "Ten digit National Provider Identifier of the referring provider.",
@@ -72,8 +77,18 @@ COMPARABLE_FIELDS: tuple[str, ...] = tuple(
     field.name for field in SCHEMA if field.method != "generate"
 )
 
-#: Document Intelligence query fields cannot request generated prose.
-QUERY_FIELDS: tuple[str, ...] = COMPARABLE_FIELDS
+#: Document Intelligence query fields cannot request generated prose. Unlike
+#: Content Understanding, it only gets the field *name* as a hint, with no
+#: description, so a document that labels a value with a bare abbreviation can
+#: be missed. Aliases are queried alongside the canonical name and the first
+#: non-empty answer wins.
+QUERY_ALIASES: dict[str, tuple[str, ...]] = {
+    "medicalRecordNumber": ("MRN",),
+}
+
+QUERY_FIELDS: tuple[str, ...] = COMPARABLE_FIELDS + tuple(
+    alias for aliases in QUERY_ALIASES.values() for alias in aliases
+)
 
 
 def analyzer_field_schema() -> dict:

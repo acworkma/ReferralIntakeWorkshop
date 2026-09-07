@@ -113,16 +113,27 @@ def ensure_analyzer(token_provider) -> bool:
 
     try:
         ensure_defaults(headers)
+        definition = analyzer_definition()
         existing = httpx.get(url, headers=headers, timeout=30)
         if existing.status_code == 200:
-            logger.info("Content Understanding analyzer %s already exists.", analyzer_id)
-            return True
+            if existing.json().get("fieldSchema") == definition["fieldSchema"]:
+                logger.info("Content Understanding analyzer %s is up to date.", analyzer_id)
+                return True
+            # Analyzers are immutable once created, so a changed field schema
+            # means editing schema.py silently has no effect until the old one
+            # is removed. Replace it instead of serving stale extraction.
+            logger.info("Field schema changed; replacing analyzer %s.", analyzer_id)
+            deleted = httpx.delete(url, headers=headers, timeout=60)
+            if deleted.status_code >= 400 and deleted.status_code != 404:
+                raise RuntimeError(
+                    f"Analyzer DELETE failed ({deleted.status_code}): {deleted.text[:1200]}"
+                )
 
         logger.info("Creating Content Understanding analyzer %s.", analyzer_id)
         response = httpx.put(
             url,
             headers={**headers, "Content-Type": "application/json"},
-            json=analyzer_definition(),
+            json=definition,
             timeout=60,
         )
         if response.status_code >= 400:

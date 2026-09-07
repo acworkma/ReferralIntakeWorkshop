@@ -8,7 +8,7 @@ from azure.identity import DefaultAzureCredential
 
 from .config import settings
 from .guardrails import sniff_media_type
-from .schema import COMPARABLE_FIELDS, FIELDS, QUERY_FIELDS
+from .schema import COMPARABLE_FIELDS, FIELDS, QUERY_ALIASES, QUERY_FIELDS
 
 
 @dataclass
@@ -93,10 +93,16 @@ def document_intelligence(content: bytes, digest: str) -> Extraction:
     fields: dict[str, str] = {}
     confidence: dict[str, float] = {}
     for field in FIELDS:
-        found = extracted.get(field) or {}
-        value = found.get("valueString") or found.get("content") or ""
-        fields[field] = value.strip() or "Not found"
-        confidence[field] = float(found.get("confidence", 0.0))
+        candidates = (field, *QUERY_ALIASES.get(field, ()))
+        value, score = "", 0.0
+        for candidate in candidates:
+            found = extracted.get(candidate) or {}
+            text = (found.get("valueString") or found.get("content") or "").strip()
+            if text:
+                value, score = text, float(found.get("confidence", 0.0))
+                break
+        fields[field] = value or "Not found"
+        confidence[field] = score
 
     # Layout does not generate prose, so summarise from the recognised text.
     if not extracted.get("summary"):
