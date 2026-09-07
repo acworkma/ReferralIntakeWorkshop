@@ -24,6 +24,8 @@ export interface Referral {
   progress: number;
   submittedBy: string;
   source: string;
+  /** The landing zone container the document is in right now. */
+  container: string | null;
   failureReason: string | null;
   comparison: { rows: ComparisonRow[]; agreementPercent: number } | null;
   approved: boolean | null;
@@ -48,4 +50,15 @@ export interface Delivery {
 export interface Identity {
   displayName: string;
   localMock: boolean;
+}
+
+/**
+ * Tells the operator whether the app is writing to a real storage account or to
+ * the local landing zone used for development. The two behave identically, so
+ * without this there is no way to tell them apart from the browser.
+ */
+export interface Health {
+  status: string;
+  time: string;
+  landingZone: "azure" | "local";
 }

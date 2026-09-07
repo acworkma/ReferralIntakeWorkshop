@@ -46,6 +46,7 @@ class Referral(Base):
             "progress": self.progress,
             "submittedBy": self.submitted_by,
             "source": self.source,
+            "container": self.container(),
             "failureReason": self.failure_reason,
             "comparison": json.loads(self.comparison_json) if self.comparison_json else None,
             "approved": self.approved,
@@ -54,6 +55,24 @@ class Referral(Base):
             "createdAt": self.created_at.isoformat(),
             "updatedAt": self.updated_at.isoformat(),
         }
+
+    def container(self) -> str | None:
+        """The landing zone container holding this document right now.
+
+        A referral's container is its state, so surfacing it is what lets the
+        review UI show where a document physically sits rather than only what
+        the database believes about it.
+        """
+        if not self.storage_uri:
+            return None
+        # Imported lazily: storage pulls in the Azure SDKs, and the model is
+        # imported by tooling that has no reason to load them.
+        from .storage import split_blob_uri
+
+        try:
+            return split_blob_uri(self.storage_uri)[0]
+        except (ValueError, IndexError):
+            return None
 
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}

@@ -1,5 +1,7 @@
 """The schema has to survive a redeploy over an existing workshop database."""
 
+from datetime import datetime, timezone
+
 from sqlalchemy import inspect, text
 
 from referral import database
@@ -56,3 +58,34 @@ def test_initialize_is_safe_to_run_twice():
     database.initialize_database()
     columns = {column["name"] for column in inspect(database.engine).get_columns("referrals")}
     assert "failure_reason" in columns
+
+
+def test_response_reports_the_container_the_document_is_in():
+    """The container is the referral's state, so the API has to surface it."""
+    referral = database.Referral(
+        id="c1",
+        filename="referral.pdf",
+        sha256="hash",
+        status="needs_review",
+        progress=100,
+        submitted_by="someone",
+        storage_uri="https://example.blob.core.windows.net/processing/c1/referral.pdf",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    assert referral.response()["container"] == "processing"
+
+
+def test_response_reports_no_container_before_the_document_is_claimed():
+    referral = database.Referral(
+        id="c2",
+        filename="referral.pdf",
+        sha256="hash2",
+        status="queued",
+        progress=0,
+        submitted_by="someone",
+        storage_uri=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    assert referral.response()["container"] is None

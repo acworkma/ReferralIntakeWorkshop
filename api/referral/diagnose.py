@@ -103,7 +103,11 @@ def _list_referrals() -> int:
         if not rows:
             print("No referrals.")
         for row in rows:
-            print(f"{row.id}  {row.status:<12} {row.progress:>3}%  {row.filename}")
+            container = row.container() or "-"
+            print(
+                f"{row.id}  {row.status:<12} {row.progress:>3}%  "
+                f"{container:<10}  {row.filename}"
+            )
     return 0
 
 

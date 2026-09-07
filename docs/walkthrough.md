@@ -200,6 +200,12 @@ az rest --method GET --url "https://management.azure.com/subscriptions/<sub>/res
 
 If you take one thing from this walkthrough, take that: **you could delete the web app and the pipeline would keep working.**
 
+**What the screen shows.** Two views, and the split is real: **In flight** is anything the workflow still owns (claimed, extracting, awaiting review), **Decided** is anything that is finished (approved, returned, failed). Every referral is in exactly one of them.
+
+Selecting a referral shows its position in the pipeline as a four step trail - Landed, Extracting, Awaiting review, Closed - and under the current step, **the container the document is physically in right now**. That is not a label the UI invented. The API reads it back off the blob URI, because in this design the container *is* the state. If you watch a document move from `incoming` to `processing` to `archive`, you are watching the same thing the storage account would tell you.
+
+The one state worth waiting for is the first: right after you deliver, the document sits in `incoming` and the list shows it as **Landed, not yet claimed**. Nothing in the browser is making the next thing happen. That gap is the event reaching the function.
+
 **Portal path.** Container App `ca-referralintake-web-dev` -> **Revisions** shows the active revision and both containers (`web` and `api`). -> **Ingress** shows it is internal to the VNet. -> **Authentication** shows Easy Auth in front of everything.
 
 ---
