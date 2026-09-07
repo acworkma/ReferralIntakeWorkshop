@@ -13,6 +13,8 @@ export interface ComparisonRow {
   documentIntelligenceConfidence: number;
   contentUnderstandingConfidence: number;
   matches: boolean;
+  // Absent on referrals extracted before this field was introduced.
+  comparable?: boolean;
 }
 
 export interface Referral {

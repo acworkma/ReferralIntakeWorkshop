@@ -204,6 +204,7 @@ def compare(content: bytes, digest: str) -> dict:
     rows = []
     for field in FIELDS:
         left, right = first.fields.get(field, ""), second.fields.get(field, "")
+        comparable = field in COMPARABLE_FIELDS
         rows.append(
             {
                 "field": field,
@@ -211,7 +212,10 @@ def compare(content: bytes, digest: str) -> dict:
                 "contentUnderstanding": right,
                 "documentIntelligenceConfidence": first.confidence.get(field, 0),
                 "contentUnderstandingConfidence": second.confidence.get(field, 0),
-                "matches": _values_agree(left, right),
+                # Generated prose has no single correct wording, so it is reported
+                # side by side and never flagged as a disagreement.
+                "comparable": comparable,
+                "matches": _values_agree(left, right) if comparable else True,
             }
         )
     # Generated prose is expected to differ, so agreement is scored on the
@@ -226,7 +230,16 @@ def compare(content: bytes, digest: str) -> dict:
 
 
 def _values_agree(left: str, right: str) -> bool:
+    """Compare two extracted values, ignoring formatting but not content.
+
+    Whitespace is presentation: one engine reading an NPI as ``1000 000079``
+    and the other as ``1000000079`` is not a disagreement worth a reviewer's
+    time. Punctuation is data: ``J44.1`` against ``144.1`` is a real OCR
+    error, so it stays flagged.
+    """
+
     def normalise(value: str) -> str:
-        return " ".join(value.casefold().replace(",", " ").split()).strip(" .")
+        collapsed = value.casefold().replace(",", "")
+        return "".join(collapsed.split()).strip(".")
 
     return normalise(left) == normalise(right)

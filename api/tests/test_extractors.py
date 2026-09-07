@@ -53,6 +53,33 @@ def test_value_comparison_ignores_formatting_noise():
     assert not _values_agree("Routine", "Urgent")
 
 
+def test_whitespace_inside_an_identifier_is_not_a_disagreement():
+    # One engine reading an NPI as "1000 000079" and the other as "1000000079"
+    # is a formatting difference. Flagging it spends reviewer attention on
+    # nothing and teaches them to ignore the highlight.
+    assert _values_agree("1000 000079", "1000000079")
+    assert _values_agree("MRN - 118902", "MRN-118902")
+
+
+def test_punctuation_inside_an_identifier_is_a_disagreement():
+    # Punctuation carries meaning in codes, so these are real OCR errors and
+    # must stay flagged.
+    assert not _values_agree("J44.1", "144.1")
+    assert not _values_agree("AUTH-58471", "AUTH-584.71")
+
+
+def test_generated_prose_is_never_flagged_as_a_disagreement():
+    # The two engines always word the summary differently. Marking it as a
+    # disagreement on every single referral is noise, not signal.
+    result = compare(b"%PDF demo referral", "a" * 64)
+    summary = next(row for row in result["rows"] if row["field"] == "summary")
+    assert summary["comparable"] is False
+    assert summary["matches"] is True
+    assert all(
+        row["comparable"] for row in result["rows"] if row["field"] in COMPARABLE_FIELDS
+    )
+
+
 def test_analyzer_schema_marks_priority_as_a_classification():
     fields = analyzer_field_schema()["fields"]
     assert set(fields) == set(FIELDS)

@@ -130,6 +130,20 @@ You should see `Executing Functions.ReferralIntake`, the handler's own messages,
 
 **Be clear with your audience:** the second engine is an addition to the reference architecture, not a copy of it. It is here because it makes the human-in-the-loop step demonstrably valuable instead of ceremonial.
 
+**What the highlighted rows mean.** A row is flagged when the two engines *read the document differently*, which is not the same thing as low confidence and is the more useful signal. An engine can report 100% confidence and still be wrong; a disagreement between two independent reads is what surfaces that. In the review UI you will see rows where both engines are highly confident and still disagree - those are exactly the rows worth a human's attention.
+
+Two things deliberately do *not* get flagged, because flagging them trains reviewers to ignore the highlight:
+
+- **Formatting differences.** An NPI read as `1000 000079` by one engine and `1000000079` by the other is the same value. Whitespace is ignored when comparing. Punctuation is not, so `J44.1` against `144.1` stays flagged - that one is a real OCR error.
+- **The generated summary.** Two engines will always word prose differently, so the summary is shown side by side and labelled as prose rather than reported as a disagreement.
+
+To see the same decision from the command line, including which rows are flagged and why:
+
+```bash
+az containerapp exec -g rg-referralintake -n ca-referralintake-web-dev --container api \
+  --command "python -m referral.diagnose --compare latest"
+```
+
 **Why Document Intelligence for one side.** It is layout-grounded: it reads a scanned fax or a handwritten form as a document with structure, and returns coordinates and per-field confidence.
 
 **Why Content Understanding for the other.** It works from a schema you define - the fields in `api/referral/schema.py` - and reasons about the content. On a clean digital PDF it is comparable; on a messy one it fails differently, which is what makes the comparison informative.

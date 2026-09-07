@@ -28,6 +28,14 @@ function formatField(value: string) {
   return value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
 }
 
+// An engine that returns no score for a field is not the same as an engine that
+// is certain the field is wrong. Rendering a bare "0% confidence" conflated the
+// two and made sound extractions look worthless.
+function Confidence({ value }: { value: number }) {
+  if (!value) return null;
+  return <small>{Math.round(value * 100)}% confidence</small>;
+}
+
 // A thrown Error with an empty message would render as no banner at all,
 // leaving a failed action looking like nothing happened.
 function toMessage(reason: unknown, fallback: string) {
@@ -330,7 +338,12 @@ function App() {
                     <div className="agreement">
                       <strong>{selected.comparison.agreementPercent}%</strong>
                       <span>field agreement</span>
-                      <p>Disagreements stay highlighted until a reviewer makes a decision.</p>
+                      <p>
+                        Highlighted rows are where the two engines read the document
+                        differently. That is independent of confidence: an engine can be
+                        certain and still be wrong, which is exactly what a reviewer is here
+                        to catch.
+                      </p>
                     </div>
                     <div className="comparison" role="table" aria-label="Extraction comparison">
                       <div className="comparison-header" role="row">
@@ -340,14 +353,20 @@ function App() {
                       </div>
                       {selected.comparison.rows.map((row) => (
                         <div className={`comparison-row ${row.matches ? "" : "diff"}`} role="row" key={row.field}>
-                          <strong role="cell">{formatField(row.field)}</strong>
+                          <strong role="cell">
+                            {formatField(row.field)}
+                            {!row.matches && <em className="row-flag">engines disagree</em>}
+                            {row.comparable === false && (
+                              <em className="row-note">generated prose, not compared</em>
+                            )}
+                          </strong>
                           <span role="cell">
                             {row.documentIntelligence}
-                            <small>{Math.round(row.documentIntelligenceConfidence * 100)}% confidence</small>
+                            <Confidence value={row.documentIntelligenceConfidence} />
                           </span>
                           <span role="cell">
                             {row.contentUnderstanding}
-                            <small>{Math.round(row.contentUnderstandingConfidence * 100)}% confidence</small>
+                            <Confidence value={row.contentUnderstandingConfidence} />
                           </span>
                         </div>
                       ))}

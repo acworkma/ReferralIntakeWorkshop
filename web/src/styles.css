@@ -625,6 +625,30 @@ button:disabled {
   font-size: 0.68rem;
 }
 
+/* The highlight alone does not say why a row is flagged, and colour is not
+   available to every reader. */
+.row-flag,
+.row-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.row-flag {
+  color: var(--warning);
+}
+
+.row-note {
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .decision {
   display: grid;
 }

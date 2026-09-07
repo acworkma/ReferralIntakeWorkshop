@@ -51,6 +51,48 @@ def _list_analyzers() -> None:
         print(f"FAILED: {type(error).__name__}: {error}")
 
 
+def _compare_rows(target: str) -> int:
+    """Show a referral's extraction rows and which ones are flagged.
+
+    The review UI highlights disagreements, and the first question anyone asks
+    is why a given row is highlighted. This prints the same decision the UI
+    renders, so it can be answered without a browser.
+    """
+    import json as _json
+
+    from sqlalchemy import select
+
+    from .database import Referral, SessionLocal
+
+    with SessionLocal() as session:
+        query = select(Referral).order_by(Referral.created_at.desc())
+        row = (
+            session.scalars(query).first()
+            if target == "latest"
+            else session.get(Referral, target)
+        )
+        if row is None:
+            print(f"No referral matched {target!r}.")
+            return 1
+        if not row.comparison_json:
+            print(f"{row.id} is {row.status}; no extraction recorded yet.")
+            return 1
+        comparison = _json.loads(row.comparison_json)
+        print(f"{row.id}  {row.status}  {row.filename}")
+        print(f"agreement: {comparison.get('agreementPercent')}%\n")
+        for entry in comparison.get("rows", []):
+            if entry.get("comparable") is False:
+                flag = "prose "
+            elif entry["matches"]:
+                flag = "      "
+            else:
+                flag = "DIFFER"
+            print(f"{flag}  {entry['field']}")
+            print(f"          DI: {entry['documentIntelligence']}")
+            print(f"          CU: {entry['contentUnderstanding']}")
+    return 0
+
+
 def _list_referrals() -> int:
     from sqlalchemy import select
 
@@ -381,6 +423,9 @@ def _review(args: list[str]) -> int:
 def main() -> int:
     if "--list" in sys.argv:
         return _list_referrals()
+    if "--compare" in sys.argv:
+        rest = sys.argv[sys.argv.index("--compare") + 1 :]
+        return _compare_rows(rest[0] if rest else "latest")
     if "--drop" in sys.argv:
         return _drop(sys.argv[sys.argv.index("--drop") + 1 :])
     if "--review" in sys.argv:
