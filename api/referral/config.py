@@ -20,13 +20,18 @@ class Settings:
     storage_account_url: str | None = os.getenv("STORAGE_ACCOUNT_URL")
     queue_account_url: str | None = os.getenv("QUEUE_ACCOUNT_URL")
     queue_name: str = os.getenv("QUEUE_NAME", "referral-jobs")
-    queue_worker_enabled: bool = _flag("QUEUE_WORKER_ENABLED", True)
-    queue_batch_size: int = int(os.getenv("QUEUE_BATCH_SIZE", "4"))
-    queue_poll_seconds: float = float(os.getenv("QUEUE_POLL_SECONDS", "5"))
-    queue_visibility_timeout: int = int(os.getenv("QUEUE_VISIBILITY_TIMEOUT", "300"))
-    queue_max_dequeue: int = int(os.getenv("QUEUE_MAX_DEQUEUE", "5"))
-    queue_shutdown_seconds: float = float(os.getenv("QUEUE_SHUTDOWN_SECONDS", "10"))
+    # Box 3 landing zone. A referral's container is its workflow state.
+    incoming_container: str = os.getenv("INCOMING_CONTAINER", "incoming")
+    processing_container: str = os.getenv("PROCESSING_CONTAINER", "processing")
+    failed_container: str = os.getenv("FAILED_CONTAINER", "failed")
+    archive_container: str = os.getenv("ARCHIVE_CONTAINER", "archive")
+    # Stands in for the storage account when one is not configured, so the same
+    # pipeline code runs on a laptop instead of a second untested code path.
+    local_landing_zone_root: str = os.getenv("LOCAL_LANDING_ZONE_ROOT", "./.landingzone")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    # Box 5 business rules. Left unset, notifications are logged and skipped so
+    # the pipeline still runs end to end without the Logic App configured.
+    logic_app_url: str | None = os.getenv("LOGIC_APP_URL")
     document_intelligence_endpoint: str | None = os.getenv("DOCUMENT_INTELLIGENCE_ENDPOINT")
     content_understanding_endpoint: str | None = os.getenv("CONTENT_UNDERSTANDING_ENDPOINT")
     content_understanding_analyzer: str = os.getenv(

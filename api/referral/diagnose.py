@@ -51,76 +51,6 @@ def _list_analyzers() -> None:
         print(f"FAILED: {type(error).__name__}: {error}")
 
 
-def _end_to_end() -> int:
-    """Drives the real blob -> queue -> worker -> SQL path against live Azure resources."""
-    import hashlib
-    import time
-    import uuid
-
-    from .database import Referral, SessionLocal
-    from .storage import delete_document, enqueue, store_document
-    from sqlalchemy import select
-
-    content = _sample_png()
-    digest = hashlib.sha256(content).hexdigest()
-    filename = "diagnostic.png"
-    referral_id = str(uuid.uuid4())
-
-    print("\n=== End-to-end pipeline ===")
-    with SessionLocal() as session:
-        for stale in session.scalars(select(Referral).where(Referral.sha256 == digest)).all():
-            session.delete(stale)
-        session.commit()
-
-    storage_uri = store_document(referral_id, filename, content)
-    print(f"stored blob: {'yes' if storage_uri else 'no (storage unset)'}")
-    with SessionLocal() as session:
-        session.add(
-            Referral(
-                id=referral_id,
-                filename=filename,
-                sha256=digest,
-                status="queued",
-                progress=5,
-                submitted_by="diagnostics",
-                storage_uri=storage_uri,
-            )
-        )
-        session.commit()
-
-    if not enqueue(referral_id):
-        print("FAILED: queue is not configured, so no worker can pick this up.")
-        return 1
-    print(f"enqueued {referral_id}; waiting for the worker to process it...")
-
-    status, deadline = "queued", time.time() + 300
-    while time.time() < deadline:
-        time.sleep(5)
-        with SessionLocal() as session:
-            row = session.get(Referral, referral_id)
-            status, progress = row.status, row.progress
-        print(f"  status={status} progress={progress}")
-        if status not in {"queued", "processing"}:
-            break
-
-    with SessionLocal() as session:
-        row = session.get(Referral, referral_id)
-        if row:
-            session.delete(row)
-            session.commit()
-    if storage_uri:
-        try:
-            delete_document(storage_uri)
-        except Exception:  # noqa: BLE001 - cleanup is best effort
-            print("note: diagnostic blob could not be removed.")
-
-    if status == "needs_review":
-        print("End-to-end pipeline succeeded.")
-        return 0
-    print(f"FAILED: pipeline ended in '{status}' instead of 'needs_review'.")
-    return 1
-
-
 def _list_referrals() -> int:
     from sqlalchemy import select
 
@@ -188,14 +118,13 @@ def _score_samples() -> int:
     import hashlib
     import json
     import time
-    import uuid
     from pathlib import Path
 
     from sqlalchemy import select
 
     from .database import Referral, SessionLocal
     from .extractors import _values_agree
-    from .storage import delete_document, enqueue, store_document
+    from .storage import delete_document, store_incoming
 
     corpus = Path(__file__).resolve().parent.parent / "samples"
     manifest_path = corpus / "manifest.json"
@@ -210,8 +139,8 @@ def _score_samples() -> int:
         print(f"\n=== {filename} ({document['channel']}, {document['difficulty']}) ===")
         content = (corpus / filename).read_bytes()
         digest = hashlib.sha256(content).hexdigest()
-        referral_id = str(uuid.uuid4())
 
+        # Clear any earlier run so the duplicate guard does not reject this one.
         with SessionLocal() as session:
             for stale in session.scalars(
                 select(Referral).where(Referral.sha256 == digest)
@@ -219,43 +148,40 @@ def _score_samples() -> int:
                 session.delete(stale)
             session.commit()
 
-        storage_uri = store_document(referral_id, filename, content)
-        with SessionLocal() as session:
-            session.add(
-                Referral(
-                    id=referral_id,
-                    filename=filename,
-                    sha256=digest,
-                    status="queued",
-                    progress=5,
-                    submitted_by="scoring",
-                    storage_uri=storage_uri,
-                )
-            )
-            session.commit()
-        if not enqueue(referral_id):
-            print("FAILED: queue is not configured, so no worker can pick this up.")
-            return 1
+        # Drop the document into the landing zone and let the trigger do the rest.
+        # Scoring runs through the same path a real upstream system takes.
+        store_incoming(f"{int(time.time())}-{filename}", content)
 
-        status, comparison, deadline = "queued", None, time.time() + 300
+        referral_id, status, comparison = None, "queued", None
+        deadline = time.time() + 300
         while time.time() < deadline:
             time.sleep(5)
             with SessionLocal() as session:
-                row = session.get(Referral, referral_id)
-                status, comparison = row.status, row.comparison_json
+                row = session.scalars(
+                    select(Referral).where(Referral.sha256 == digest)
+                ).first()
+                if row is None:
+                    continue
+                referral_id, status, comparison = row.id, row.status, row.comparison_json
             if status not in {"queued", "processing"}:
                 break
+
+        if referral_id is None:
+            print("FAILED: the document never reached the database.")
+            continue
 
         with SessionLocal() as session:
             row = session.get(Referral, referral_id)
             if row:
+                # Scoring is a test, so it cleans up after itself: the row and
+                # the document it left in the processing container both go.
+                if row.storage_uri:
+                    try:
+                        delete_document(row.storage_uri)
+                    except Exception:  # noqa: BLE001 - cleanup is best effort
+                        pass
                 session.delete(row)
                 session.commit()
-        if storage_uri:
-            try:
-                delete_document(storage_uri)
-            except Exception:  # noqa: BLE001 - cleanup is best effort
-                pass
 
         if status != "needs_review" or not comparison:
             print(f"FAILED: pipeline ended in '{status}'.")
@@ -288,9 +214,181 @@ def _score_samples() -> int:
     return 0
 
 
+def _queue_depth() -> int:
+    """Show what is sitting in the jobs queue, and in its poison queue.
+
+    Between Event Grid and the function there is exactly one buffer. When a
+    document does not appear in the review queue, this is the first place to
+    look: a message here means the trigger fired and the function has not
+    consumed it, an empty queue means the trigger never fired at all.
+    """
+    from azure.storage.queue import QueueClient
+
+    from . import storage
+
+    if not settings.queue_account_url:
+        print("No queue account configured.")
+        return 1
+    for name in (settings.queue_name, f"{settings.queue_name}-poison"):
+        client = QueueClient(
+            account_url=settings.queue_account_url,
+            queue_name=name,
+            credential=storage.credential(),
+        )
+        try:
+            depth = client.get_queue_properties().approximate_message_count
+        except Exception as error:  # noqa: BLE001 - diagnostics report every failure
+            print(f"{name}: unreachable ({type(error).__name__}: {error})")
+            continue
+        print(f"{name}: {depth} message(s)")
+        for message in client.peek_messages(max_messages=5):
+            body = (message.content or "")[:400]
+            print(f"    inserted={message.inserted_on} dequeued={message.dequeue_count}")
+            print(f"    {body}")
+    return 0
+
+
+def _drop(paths: list[str]) -> int:
+    """Prove the pipeline is trigger-driven, not app-driven.
+
+    Writes a document straight into the incoming container and waits. Nothing
+    here calls the API or the function: if a referral appears, the blob write
+    is what started it.
+    """
+    import time
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from . import storage
+    from .database import Referral, SessionLocal, initialize_database
+
+    initialize_database()
+
+    def rows() -> list[Referral]:
+        with SessionLocal() as session:
+            return list(session.scalars(select(Referral).order_by(Referral.created_at.desc())).all())
+
+    if not storage.using_azure_storage():
+        print("No storage account configured. Set STORAGE_ACCOUNT_URL and try again.")
+        return 1
+
+    candidates = [Path(p) for p in paths] if paths else sorted(Path("samples").glob("*.pdf"))[:1]
+    if not candidates:
+        print("Nothing to drop. Pass a file path or run from a checkout with samples/.")
+        return 1
+
+    before = {row.id for row in rows()}
+    dropped: list[str] = []
+    for path in candidates:
+        if not path.is_file():
+            print(f"Not a file: {path}")
+            return 1
+        name = f"{int(time.time())}-{path.name}"
+        storage.store_incoming(name, path.read_bytes(), {"droppedBy": "diagnose"})
+        dropped.append(name)
+        print(f"dropped  {name} -> {settings.incoming_container}/")
+
+    print("\nWaiting for the workflow. No API call was made.")
+    deadline = time.time() + 300
+    seen: dict[str, str] = {}
+    while time.time() < deadline:
+        time.sleep(5)
+        for row in rows():
+            if row.id in before:
+                continue
+            if seen.get(row.id) != row.status:
+                seen[row.id] = row.status
+                print(f"  {row.filename}: {row.status}")
+        settled = [s for s in seen.values() if s in {"needs_review", "failed"}]
+        if len(settled) >= len(dropped):
+            break
+
+    if not seen:
+        print("\nFAILED: nothing reached the database. The trigger did not fire.")
+        print("Check the Event Grid subscription's delivery metrics and the queue depth.")
+        return 1
+    failed = [rid for rid, status in seen.items() if status == "failed"]
+    if failed or len(seen) < len(dropped):
+        print(f"\nFAILED: {len(seen)}/{len(dropped)} arrived, {len(failed)} failed.")
+        return 1
+    print(f"\nOK: {len(seen)} document(s) reached the review queue without an API call.")
+    return 0
+
+
+def _containers() -> int:
+    """Show what is sitting in each container of the landing zone.
+
+    The container a document sits in *is* its state: ``incoming`` means nobody
+    has claimed it, ``processing`` means the function owns it, and ``archive``
+    or ``failed`` is where it ended up. Storage is firewalled to the VNet, so
+    this is the supported way to look.
+    """
+    from . import storage
+
+    if not storage.using_azure_storage():
+        print("Local filesystem backend; nothing to list in Azure.")
+        return 1
+    service = storage._service()
+    for container in (
+        settings.incoming_container,
+        settings.processing_container,
+        settings.archive_container,
+        settings.failed_container,
+    ):
+        client = service.get_container_client(container)
+        names = [blob.name for blob in client.list_blobs()]
+        print(f"\n{container}: {len(names)} blob(s)")
+        for name in names[:20]:
+            print(f"  {name}")
+        if len(names) > 20:
+            print(f"  ... and {len(names) - 20} more")
+    return 0
+
+
+def _review(args: list[str]) -> int:
+    """Approve or return a referral through the same path the reviewer's click takes.
+
+    Boxes 6 and 7: the decision moves the document to its final container and
+    posts a business event to the Logic App. Running it here proves the handoff
+    works without needing a browser session against Easy Auth.
+    """
+    from .database import Referral, SessionLocal
+    from .review import ReviewRejected, decide
+
+    if not args:
+        print("Usage: python -m referral.diagnose --review <referral-id> [approve|return]")
+        return 1
+    referral_id = args[0]
+    approved = (args[1] if len(args) > 1 else "approve").lower() != "return"
+    try:
+        decided = decide(referral_id, approved, "Reviewed from the diagnostics CLI.", "diagnostics")
+    except ReviewRejected as rejected:
+        print(f"FAILED ({rejected.status}): {rejected.message}")
+        return 1
+    print(f"status: {decided['status']}")
+    # The API response deliberately withholds the storage location, so read the
+    # row directly to prove the document actually moved to its final container.
+    with SessionLocal() as session:
+        print(f"document: {session.get(Referral, referral_id).storage_uri}")
+    if not settings.logic_app_url:
+        print("WARNING: no Logic App configured, so Box 7 was not notified.")
+        return 1
+    print("Logic App notified. Check its run history for the matching run.")
+    return 0
+
+
 def main() -> int:
     if "--list" in sys.argv:
         return _list_referrals()
+    if "--drop" in sys.argv:
+        return _drop(sys.argv[sys.argv.index("--drop") + 1 :])
+    if "--review" in sys.argv:
+        return _review(sys.argv[sys.argv.index("--review") + 1 :])
+    if "--containers" in sys.argv:
+        return _containers()
+    if "--queue" in sys.argv:
+        return _queue_depth()
     if "--score" in sys.argv:
         return _score_samples()
     if "--analyzer" in sys.argv:
@@ -301,8 +399,6 @@ def main() -> int:
             print("Usage: python -m referral.diagnose --delete <referral-id|failed> ...")
             return 1
         return _delete_referrals(targets)
-    if "--e2e" in sys.argv:
-        return _end_to_end()
     content = _sample_png()
     digest = "0" * 64
     _list_analyzers()

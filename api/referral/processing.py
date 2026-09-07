@@ -1,3 +1,10 @@
+"""Box 4: turn a claimed document into structured, reviewable evidence.
+
+Called by the orchestration function once a document has been moved into the
+``processing`` container. Kept separate from :mod:`referral.intake` so the
+extraction step can be driven on its own from the diagnostics CLI.
+"""
+
 import json
 
 from sqlalchemy import select
@@ -5,16 +12,6 @@ from sqlalchemy import select
 from .database import Referral, SessionLocal
 from .extractors import compare
 from .storage import load_document
-
-_local_payloads: dict[str, bytes] = {}
-
-
-def remember_local_payload(referral_id: str, content: bytes) -> None:
-    _local_payloads[referral_id] = content
-
-
-def forget_local_payload(referral_id: str) -> None:
-    _local_payloads.pop(referral_id, None)
 
 
 def process_referral(referral_id: str) -> None:
@@ -27,33 +24,12 @@ def process_referral(referral_id: str) -> None:
         referral.status = "processing"
         referral.progress = 25
         session.commit()
-        try:
-            content = _local_payloads.get(referral_id)
-            if content is None and referral.storage_uri:
-                content = load_document(referral.storage_uri)
-            if content is None:
-                raise RuntimeError("Referral document payload is unavailable.")
-            referral.progress = 60
-            session.commit()
-            referral.comparison_json = json.dumps(compare(content, referral.sha256))
-            referral.status = "needs_review"
-            referral.progress = 100
-            session.commit()
-        except Exception:
-            # Leave the referral in "processing" so the queue retry can try again.
-            # mark_failed records the terminal state once retries are exhausted.
-            session.rollback()
-            raise
-        _local_payloads.pop(referral_id, None)
-
-
-def mark_failed(referral_id: str) -> None:
-    """Records the terminal failure once the queue has exhausted its retries."""
-    with SessionLocal() as session:
-        referral = session.get(Referral, referral_id)
-        if not referral or referral.status not in {"queued", "processing"}:
-            return
-        referral.status = "failed"
+        if not referral.storage_uri:
+            raise RuntimeError("The referral document is no longer in the landing zone.")
+        content = load_document(referral.storage_uri)
+        referral.progress = 60
+        session.commit()
+        referral.comparison_json = json.dumps(compare(content, referral.sha256))
+        referral.status = "needs_review"
         referral.progress = 100
         session.commit()
-    _local_payloads.pop(referral_id, None)

@@ -43,6 +43,7 @@ function App() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [awaitingPickup, setAwaitingPickup] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -50,6 +51,11 @@ function App() {
       const rows = await api.list();
       setReferrals(rows);
       setSelectedId((current) => current ?? rows[0]?.id ?? null);
+      // A delivery stops being "awaiting pickup" once the workflow has created
+      // its referral, which is the moment the pipeline visibly did its job.
+      setAwaitingPickup((pending) =>
+        pending.filter((filename) => !rows.some((row) => row.filename === filename)),
+      );
       setError("");
     } catch (reason) {
       setError(toMessage(reason, "Unable to load the queue."));
@@ -71,23 +77,29 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!referrals.some((row) => row.status === "queued" || row.status === "processing")) return;
+    const working = referrals.some(
+      (row) => row.status === "queued" || row.status === "processing",
+    );
+    if (!working && awaitingPickup.length === 0) return;
     const timer = window.setInterval(refresh, 1500);
     return () => window.clearInterval(timer);
-  }, [referrals, refresh]);
+  }, [referrals, awaitingPickup, refresh]);
 
   const selected = referrals.find((row) => row.id === selectedId) ?? null;
 
-  async function upload(file?: File) {
+  async function deliver(file?: File) {
     if (!file) return;
     setBusy(true);
     setError("");
     try {
-      const created = await api.upload(file);
-      setReferrals((rows) => [created, ...rows]);
-      setSelectedId(created.id);
+      const delivery = await api.deliver(file);
+      // No referral comes back, because none exists yet. The document is in the
+      // landing zone and the workflow takes it from here.
+      setAwaitingPickup((pending) => [...pending, delivery.filename]);
+      setSelectedId(null);
+      await refresh();
     } catch (reason) {
-      setError(toMessage(reason, "Upload failed."));
+      setError(toMessage(reason, "The document could not be delivered."));
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -109,7 +121,11 @@ function App() {
   }
 
   async function remove(referral: Referral) {
-    if (!window.confirm(`Delete "${referral.filename}"? This also frees the document for re-upload.`)) {
+    if (
+      !window.confirm(
+        `Delete "${referral.filename}"? This also removes its document and frees it for redelivery.`,
+      )
+    ) {
       return;
     }
     setBusy(true);
@@ -198,25 +214,46 @@ function App() {
                 ref={fileInput}
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                onChange={(event) => upload(event.target.files?.[0])}
+                onChange={(event) => deliver(event.target.files?.[0])}
                 hidden
               />
               <button
                 className="primary"
                 disabled={busy}
                 onClick={() => fileInput.current?.click()}
+                title="Writes the document to the incoming container, exactly as an upstream system would"
               >
                 {busy ? <LoaderCircle className="spin" size={18} /> : <FileUp size={18} />}
-                Add referral
+                Deliver document
               </button>
             </div>
+
+            {awaitingPickup.length > 0 && (
+              <div className="awaiting" role="status">
+                <LoaderCircle className="spin" size={17} />
+                <div>
+                  <strong>
+                    {awaitingPickup.length === 1
+                      ? `${awaitingPickup[0]} is in the incoming container`
+                      : `${awaitingPickup.length} documents are in the incoming container`}
+                  </strong>
+                  <span>
+                    Waiting for the workflow to pick it up. Nothing here is driving that: the
+                    blob write raised an event and the orchestration function responds to it.
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="queue-list" role="list">
               {referrals.length === 0 ? (
                 <div className="empty">
                   <FileUp size={32} />
-                  <h3>Start with a referral document</h3>
-                  <p>Upload a PDF, PNG, or JPEG. The API validates its type, size, and signature.</p>
+                  <h3>Nothing has reached the review queue</h3>
+                  <p>
+                    Deliver a PDF, PNG, or JPEG to the landing zone, or drop one straight into the
+                    storage account with azcopy. Either way the same workflow picks it up.
+                  </p>
                 </div>
               ) : (
                 referrals.map((referral) => (
@@ -253,7 +290,11 @@ function App() {
                 <div className="review-head">
                   <div>
                     <h2>{selected.filename}</h2>
-                    <p>Submitted by {selected.submittedBy}</p>
+                    <p>
+                      {selected.source === "web-simulator"
+                        ? `Delivered by ${selected.submittedBy} through the upstream simulator`
+                        : `Delivered by ${selected.submittedBy}`}
+                    </p>
                   </div>
                   <div className="review-head-actions">
                     <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
@@ -271,13 +312,16 @@ function App() {
                 {(selected.status === "queued" || selected.status === "processing") && (
                   <div className="processing">
                     <div className="progress-copy">
-                      <span>Dual-engine extraction</span>
+                      <span>The workflow is processing this document</span>
                       <strong>{selected.progress}%</strong>
                     </div>
                     <div className="progress-track" aria-label={`${selected.progress}% processed`}>
                       <span style={{ width: `${selected.progress}%` }} />
                     </div>
-                    <p>Document Intelligence and Content Understanding are processing in parallel.</p>
+                    <p>
+                      The orchestration function moved it to the processing container and is
+                      running Document Intelligence and Content Understanding against it.
+                    </p>
                   </div>
                 )}
 
@@ -336,10 +380,14 @@ function App() {
                   <div className="final-state rejected">
                     <X size={20} />
                     <div>
-                      <strong>Extraction failed</strong>
+                      <strong>The workflow could not process this document</strong>
                       <span>
-                        The document could not be processed after several attempts. Delete it to try
-                        again, and check the API container logs for the underlying error.
+                        {selected.failureReason ??
+                          "No reason was recorded. Check the function's invocation logs."}
+                      </span>
+                      <span>
+                        The document is in the failed container, where it can be inspected or
+                        redelivered.
                       </span>
                     </div>
                   </div>

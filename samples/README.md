@@ -2,7 +2,7 @@
 
 Six fabricated referral documents, one per intake channel in the **PHI
 Sources** box of the reference architecture. They exist so an attendee can
-drive the full upload -> dual-engine extraction -> comparison -> human
+drive the full delivery -> dual-engine extraction -> comparison -> human
 approval flow without any real referral data, and so extraction quality can
 actually be measured instead of eyeballed.
 
@@ -52,20 +52,28 @@ az containerapp exec -n ca-referralintake-web-dev -g rg-referralintake \
   --command "python -m referral.diagnose --score"
 ```
 
-## Uploading a sample by hand
+## Delivering a sample by hand
 
-Every file is a valid PDF/PNG matching its declared content type, which is
-what `api/referral/guardrails.py` requires.
+The app is not the only way in, and that is the point. Anything that can write
+a blob into the `incoming` container starts the workflow. From the jumpbox,
+which is inside the VNet:
+
+```powershell
+azcopy copy samples\referral-portal-submission.pdf `
+  "https://<account>.blob.core.windows.net/incoming/referral-portal-submission.pdf"
+```
+
+The app's own endpoint does the same thing, and nothing more. It writes the
+document to `incoming/` and returns `202`; it does not process it, and no
+referral id comes back, because none exists until the function creates one.
 
 ```bash
 curl -X POST "https://<host>/api/referrals" \
   -F "document=@samples/referral-portal-submission.pdf;type=application/pdf"
 ```
 
-```powershell
-curl.exe -X POST "https://<host>/api/referrals" `
-  -F "document=@samples/fax-referral-transmission.png;type=image/png"
-```
+Every file is a valid PDF/PNG matching its declared content type, which is
+what `api/referral/guardrails.py` requires once the function claims it.
 
 The endpoint requires an authenticated caller per the deployed Easy Auth
 configuration - see the [deployment instructions](../docs/deployment.md).

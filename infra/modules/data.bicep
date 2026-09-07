@@ -14,8 +14,22 @@ param functionPrincipalId string
 param containerAppsPrincipalId string
 param tags object
 
+var storageAccountName = take('st${take(workloadName, 10)}${take(environmentName, 3)}${uniqueSuffix}', 24)
+var systemTopicName = 'evgt-${workloadName}-${environmentName}'
+var jobsQueueName = 'referral-jobs'
+
+// Box 3 of the reference architecture: the blob's container is the workflow
+// state. A document is in exactly one of these at any moment, which makes the
+// pipeline legible from the portal without reading a database.
+var landingContainers = [
+  'incoming'
+  'processing'
+  'failed'
+  'archive'
+]
+
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: take('st${take(workloadName, 10)}${take(environmentName, 3)}${uniqueSuffix}', 24)
+  name: storageAccountName
   location: location
   tags: tags
   sku: { name: 'Standard_ZRS' }
@@ -26,7 +40,19 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     defaultToOAuthAuthentication: true
     minimumTlsVersion: 'TLS1_2'
     publicNetworkAccess: 'Disabled'
-    networkAcls: { defaultAction: 'Deny', bypass: 'AzureServices' }
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+      // Event Grid delivers blob events from outside the VNet. Trusted-service
+      // access takes precedence over the disabled public endpoint, and the
+      // resource instance rule narrows that trust to this one system topic.
+      resourceAccessRules: [
+        {
+          tenantId: tenantId
+          resourceId: resourceId('Microsoft.EventGrid/systemTopics', systemTopicName)
+        }
+      ]
+    }
     supportsHttpsTrafficOnly: true
   }
 }
@@ -40,11 +66,13 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   }
 }
 
-resource referralContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
-  parent: blobService
-  name: 'referrals'
-  properties: { publicAccess: 'None' }
-}
+resource landingZone 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [
+  for name in landingContainers: {
+    parent: blobService
+    name: name
+    properties: { publicAccess: 'None' }
+  }
+]
 
 resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-01' = {
   parent: storage
@@ -53,13 +81,48 @@ resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-0
 
 resource jobsQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
   parent: queueService
-  name: 'referral-jobs'
+  name: jobsQueueName
 }
 
 resource poisonQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
   parent: queueService
-  name: 'referral-jobs-poison'
+  name: '${jobsQueueName}-poison'
 }
+
+// Box 5 starts here. A blob landing in incoming/ is what fires the workflow,
+// whether it arrived from the web app, azcopy, or a real upstream system.
+resource systemTopic 'Microsoft.EventGrid/systemTopics@2024-06-01-preview' = {
+  name: systemTopicName
+  location: location
+  tags: tags
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    source: storage.id
+    topicType: 'Microsoft.Storage.StorageAccounts'
+  }
+}
+
+// Storage Queue Data Message Sender, scoped so the topic can only enqueue.
+resource topicQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, systemTopic.id, 'queue-sender')
+  scope: storage
+  properties: {
+    principalId: systemTopic.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'c6a89b2d-59bc-44d0-9896-0f6e12d7b80a'
+    )
+  }
+}
+
+// Delivery lands in a storage queue rather than calling the function directly:
+// the Function App has no inbound public path, so every hop has to be outbound.
+// The subscription itself lives in eventing.bicep, deployed last. Event Grid
+// validates the identity's queue permission the moment the subscription is
+// created, and a role assignment made in this module is not always visible to
+// that check yet. Putting the subscription at the end of the graph gives the
+// assignment the minutes it needs rather than relying on a lucky race.
 
 var storageRoles = [
   'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
@@ -182,5 +245,8 @@ resource sqlDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@20
 
 output storageAccountName string = storage.name
 output storageAccountId string = storage.id
+output eventGridSystemTopicName string = systemTopic.name
+output jobsQueueName string = jobsQueueName
+output incomingContainer string = landingContainers[0]
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
 output sqlDatabaseName string = database.name
