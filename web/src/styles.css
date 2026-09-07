@@ -573,6 +573,10 @@ button:disabled {
   padding: 10px 12px;
   border-right: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
+  /* Grid items default to min-width:auto, so an unbreakable token such as an
+     email address blows past its track and overlaps the next column. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .comparison-row {
