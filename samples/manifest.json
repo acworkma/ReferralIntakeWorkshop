@@ -1,0 +1,144 @@
+{
+  "description": "Ground truth for the sample referral corpus. Every record is fabricated; identifiers use ranges reserved for fiction.",
+  "documents": [
+    {
+      "file": "referral-portal-submission.pdf",
+      "channel": "Referral Portals",
+      "scenario": "portal-chf",
+      "difficulty": "easy",
+      "expected": {
+        "patientName": "Rowan Alvarez",
+        "patientDateOfBirth": "1948-03-22",
+        "medicalRecordNumber": "MRN-441703",
+        "referringProvider": "Priya Raman, MD",
+        "referringProviderNpi": "1000000012",
+        "priority": "Routine",
+        "requestedService": "Skilled nursing",
+        "primaryDiagnosis": "Congestive heart failure exacerbation",
+        "diagnosisCode": "I50.9",
+        "payer": "Example Health Plan",
+        "authorizationNumber": "AUTH-55012",
+        "requestedDate": "2030-01-15"
+      },
+      "reviewerMustConfirm": [],
+      "notes": ""
+    },
+    {
+      "file": "fax-referral-transmission.png",
+      "channel": "Fax Systems",
+      "scenario": "fax-wound",
+      "difficulty": "hard",
+      "expected": {
+        "patientName": "Dolores Whitfield",
+        "patientDateOfBirth": "1939-11-04",
+        "medicalRecordNumber": "MRN-207755",
+        "referringProvider": "Aaron Beckett, DO",
+        "referringProviderNpi": "1000000038",
+        "priority": "Urgent",
+        "requestedService": "Wound care",
+        "primaryDiagnosis": "Stage 3 pressure ulcer of sacral region",
+        "diagnosisCode": "L89.153",
+        "payer": "Statewide Care Advantage",
+        "authorizationNumber": "AUTH-61884",
+        "requestedDate": "2030-02-03"
+      },
+      "reviewerMustConfirm": [
+        "referringProviderNpi",
+        "authorizationNumber"
+      ],
+      "notes": "Rendered as a degraded 200 dpi bitonal fax with skew and scan noise."
+    },
+    {
+      "file": "email-attachment-referral.pdf",
+      "channel": "Email Attachments",
+      "scenario": "email-ortho",
+      "difficulty": "easy",
+      "expected": {
+        "patientName": "Marcus Oyelaran",
+        "patientDateOfBirth": "1972-07-30",
+        "medicalRecordNumber": "MRN-663120",
+        "referringProvider": "Helen Zhao, MD",
+        "referringProviderNpi": "1000000053",
+        "priority": "Routine",
+        "requestedService": "Physical therapy",
+        "primaryDiagnosis": "Status post right total knee arthroplasty",
+        "diagnosisCode": "Z96.651",
+        "payer": "Northbridge Mutual",
+        "authorizationNumber": "AUTH-70233",
+        "requestedDate": "2030-03-11"
+      },
+      "reviewerMustConfirm": [],
+      "notes": ""
+    },
+    {
+      "file": "scanned-intake-form.png",
+      "channel": "Scanned Patient Documents",
+      "scenario": "scan-copd",
+      "difficulty": "hard",
+      "expected": {
+        "patientName": "Etta Brannigan",
+        "patientDateOfBirth": "1945-05-17",
+        "medicalRecordNumber": "MRN-118902",
+        "referringProvider": "Samuel Ncube, MD",
+        "referringProviderNpi": "1000000079",
+        "priority": "Routine",
+        "requestedService": "Skilled nursing",
+        "primaryDiagnosis": "Chronic obstructive pulmonary disease with acute exacerbation",
+        "diagnosisCode": "J44.1",
+        "payer": "Example Health Plan",
+        "authorizationNumber": "AUTH-58471",
+        "requestedDate": "2030-04-02"
+      },
+      "reviewerMustConfirm": [
+        "patientDateOfBirth",
+        "medicalRecordNumber",
+        "authorizationNumber"
+      ],
+      "notes": "Handwritten intake form values, rendered at 300 dpi with scan artifacts."
+    },
+    {
+      "file": "provider-referral-packet.pdf",
+      "channel": "Provider Referral Packets",
+      "scenario": "packet-stroke",
+      "difficulty": "easy",
+      "expected": {
+        "patientName": "Theodore Kaminski",
+        "patientDateOfBirth": "1953-09-08",
+        "medicalRecordNumber": "MRN-550418",
+        "referringProvider": "Nadia Farouk, MD",
+        "referringProviderNpi": "1000000095",
+        "priority": "Urgent",
+        "requestedService": "Occupational therapy",
+        "primaryDiagnosis": "Cerebral infarction with right sided hemiparesis",
+        "diagnosisCode": "I63.9",
+        "payer": "Statewide Care Advantage",
+        "authorizationNumber": "AUTH-64907",
+        "requestedDate": "2030-05-20"
+      },
+      "reviewerMustConfirm": [],
+      "notes": "Multi-page packet: face sheet, history and physical, medication list, signed order."
+    },
+    {
+      "file": "partner-network-referral.pdf",
+      "channel": "External Healthcare Partners",
+      "scenario": "partner-hospice",
+      "difficulty": "easy",
+      "expected": {
+        "patientName": "Junko Halvorsen",
+        "patientDateOfBirth": "1936-12-19",
+        "medicalRecordNumber": "MRN-903277",
+        "referringProvider": "Elliot Sandoval, MD",
+        "referringProviderNpi": "1000000110",
+        "priority": "STAT",
+        "requestedService": "Skilled nursing",
+        "primaryDiagnosis": "Metastatic pancreatic carcinoma",
+        "diagnosisCode": "C25.9",
+        "payer": "Northbridge Mutual",
+        "authorizationNumber": "AUTH-72550",
+        "requestedDate": "2030-06-08"
+      },
+      "reviewerMustConfirm": [],
+      "notes": "Partner EMR export layout with a code-first table rather than a form."
+    }
+  ]
+}

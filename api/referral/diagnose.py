@@ -178,9 +178,121 @@ def _provision_analyzer() -> int:
     return 0 if ok else 1
 
 
+def _score_samples() -> int:
+    """Grade extraction against the known ground truth of the sample corpus.
+
+    Pushes every sample through the real blob -> queue -> worker path, then
+    reports how much of the ground truth each engine actually recovered. This
+    only works from inside the VNet, which is where the AI endpoints live.
+    """
+    import hashlib
+    import json
+    import time
+    import uuid
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from .database import Referral, SessionLocal
+    from .extractors import _values_agree
+    from .storage import delete_document, enqueue, store_document
+
+    corpus = Path(__file__).resolve().parent.parent / "samples"
+    manifest_path = corpus / "manifest.json"
+    if not manifest_path.exists():
+        print(f"FAILED: no sample corpus at {manifest_path}.")
+        return 1
+    documents = json.loads(manifest_path.read_text(encoding="utf-8"))["documents"]
+
+    totals = {"documentIntelligence": [0, 0], "contentUnderstanding": [0, 0]}
+    for document in documents:
+        filename = document["file"]
+        print(f"\n=== {filename} ({document['channel']}, {document['difficulty']}) ===")
+        content = (corpus / filename).read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        referral_id = str(uuid.uuid4())
+
+        with SessionLocal() as session:
+            for stale in session.scalars(
+                select(Referral).where(Referral.sha256 == digest)
+            ).all():
+                session.delete(stale)
+            session.commit()
+
+        storage_uri = store_document(referral_id, filename, content)
+        with SessionLocal() as session:
+            session.add(
+                Referral(
+                    id=referral_id,
+                    filename=filename,
+                    sha256=digest,
+                    status="queued",
+                    progress=5,
+                    submitted_by="scoring",
+                    storage_uri=storage_uri,
+                )
+            )
+            session.commit()
+        if not enqueue(referral_id):
+            print("FAILED: queue is not configured, so no worker can pick this up.")
+            return 1
+
+        status, comparison, deadline = "queued", None, time.time() + 300
+        while time.time() < deadline:
+            time.sleep(5)
+            with SessionLocal() as session:
+                row = session.get(Referral, referral_id)
+                status, comparison = row.status, row.comparison_json
+            if status not in {"queued", "processing"}:
+                break
+
+        with SessionLocal() as session:
+            row = session.get(Referral, referral_id)
+            if row:
+                session.delete(row)
+                session.commit()
+        if storage_uri:
+            try:
+                delete_document(storage_uri)
+            except Exception:  # noqa: BLE001 - cleanup is best effort
+                pass
+
+        if status != "needs_review" or not comparison:
+            print(f"FAILED: pipeline ended in '{status}'.")
+            continue
+
+        extracted = {entry["field"]: entry for entry in json.loads(comparison).get("rows", [])}
+        for engine in ("documentIntelligence", "contentUnderstanding"):
+            hits, scored, misses = 0, 0, []
+            for field, expected in document["expected"].items():
+                entry = extracted.get(field)
+                if entry is None or not expected:
+                    continue
+                scored += 1
+                actual = entry.get(engine, "")
+                if _values_agree(actual, expected):
+                    hits += 1
+                else:
+                    misses.append(f"{field}: expected {expected!r}, got {actual!r}")
+            totals[engine][0] += hits
+            totals[engine][1] += scored
+            print(f"  {engine:>22}: {hits}/{scored} ({round(hits / scored * 100) if scored else 0}%)")
+            for miss in misses:
+                print(f"        - {miss}")
+        if document["reviewerMustConfirm"]:
+            print(f"  reviewer must confirm: {', '.join(document['reviewerMustConfirm'])}")
+
+    print("\n=== Corpus totals ===")
+    for engine, (hits, scored) in totals.items():
+        print(f"  {engine:>22}: {hits}/{scored} ({round(hits / scored * 100) if scored else 0}%)")
+    return 0
+
+
 def main() -> int:
     if "--list" in sys.argv:
         return _list_referrals()
+    if "--score" in sys.argv:
+        return _score_samples()
     if "--analyzer" in sys.argv:
         return _provision_analyzer()
     if "--delete" in sys.argv:

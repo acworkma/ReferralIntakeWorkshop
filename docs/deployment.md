@@ -50,7 +50,7 @@ Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workfl
 The extraction worker runs as a queue-consumer thread inside the `api` container, so rolling the two container images is enough for a fully working deployment. If you have no registry access from your workstation, `az acr build` builds server-side inside ACR:
 
 ```powershell
-az acr build -r <acr-name> -t referral-api:<tag> api
+az acr build -r <acr-name> -t referral-api:<tag> -f api/Dockerfile .
 az acr build -r <acr-name> -t referral-web:<tag> web
 az containerapp update -g rg-referralintake -n ca-referralintake-web-dev --container-name api --image <acr-login-server>/referral-api:<tag>
 az containerapp update -g rg-referralintake -n ca-referralintake-web-dev --container-name web --image <acr-login-server>/referral-web:<tag>

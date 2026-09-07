@@ -11,8 +11,12 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
+COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY api/ .
+# The sample corpus and its ground truth ship with the image so
+# `python -m referral.diagnose --score` can grade extraction from inside the
+# private network, where the AI endpoints are the only place they are reachable.
+COPY samples/ ./samples/
 EXPOSE 7071
 CMD ["uvicorn", "referral.app:app", "--host", "0.0.0.0", "--port", "7071"]

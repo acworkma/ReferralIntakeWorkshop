@@ -57,7 +57,7 @@ jobs:
       - name: Build immutable images in ACR
         run: |
           az acr build -r "$ACR_NAME" -t "referral-web:${GITHUB_SHA}" web
-          az acr build -r "$ACR_NAME" -t "referral-api:${GITHUB_SHA}" api
+          az acr build -r "$ACR_NAME" -t "referral-api:${GITHUB_SHA}" -f api/Dockerfile .
 
       - name: Roll out Container Apps revision
         run: |
