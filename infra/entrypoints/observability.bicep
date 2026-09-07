@@ -3,7 +3,7 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param workloadName string = 'referralintake'
 param environmentName string = 'dev'
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/observability.bicep' = {
   name: 'observability'

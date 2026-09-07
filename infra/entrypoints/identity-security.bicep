@@ -10,7 +10,7 @@ param keyVaultPrivateDnsZoneId string
 param jumpboxAdminPassword string = ''
 param jumpboxAdminGroupObjectId string = ''
 param storeJumpboxPassword bool = false
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/identity-security.bicep' = {
   name: 'identity-security'

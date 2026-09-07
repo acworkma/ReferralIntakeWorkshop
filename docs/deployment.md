@@ -45,7 +45,20 @@ The root creates `rg-referralintake`. It intentionally deploys Microsoft sample 
 .\scripts\set-entra-redirect-uris.ps1
 ```
 
-Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and deploys the Function package. Connect through Azure Bastion (Basic SKU) to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
+Publish `web` and `api` with `.github/workflows/publish-deploy.yml`; that workflow rolls the two ACA containers and, optionally, deploys the Function package. Connect through Azure Bastion (Basic SKU) to `vm-referralintake-jump-dev` for private administration tasks (including `scripts/bootstrap-sql.sql`), then restart the API revision so SQLAlchemy creates the schema.
+
+The extraction worker runs as a queue-consumer thread inside the `api` container, so rolling the two container images is enough for a fully working deployment. If you have no registry access from your workstation, `az acr build` builds server-side inside ACR:
+
+```powershell
+az acr build -r <acr-name> -t referral-api:<tag> -f api/Dockerfile .
+az acr build -r <acr-name> -t referral-web:<tag> web
+az containerapp update -g rg-referralintake -n ca-referralintake-web-dev --container-name api --image <acr-login-server>/referral-api:<tag>
+az containerapp update -g rg-referralintake -n ca-referralintake-web-dev --container-name web --image <acr-login-server>/referral-web:<tag>
+```
+
+The Function App is an optional second host for the same code. It is not required: its public network access is disabled, so publishing to it needs a VNet-connected runner or the jumpbox. Leaving it empty does not stop referrals from processing. After deploying, confirm the pipeline with `python -m referral.diagnose --e2e` as described in [operations](operations.md#diagnostics).
+
+The initial Container Apps deployment outputs `containerAppsDefaultDomain`. Redeploy the root template with `containerAppsDefaultDomain` set to that output so it creates the private DNS zone, wildcard A record, and hub/spoke VNet links required for internal ingress. This separate deployment is necessary because Azure assigns the environment default domain during the initial deployment. Keep Container App ingress `external: true`: in an internal environment this remains private to the VNet and makes the application available from the Bastion-connected jumpbox; `external: false` restricts traffic to apps in the Container Apps environment.
 
 ### Jumpbox admin password
 

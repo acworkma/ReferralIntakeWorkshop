@@ -1,0 +1,16 @@
+# Build context for the API image is the repository root (see api/Dockerfile),
+# so keep everything the image does not need out of the upload.
+.git
+.github
+.venv
+docs
+infra
+scripts
+web
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+samples/fonts
+samples/generate_samples.py
+samples/scenarios.py
+samples/README.md

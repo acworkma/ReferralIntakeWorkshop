@@ -12,7 +12,7 @@
 
 | Principal | Scope | Role | Why |
 |---|---|---|---|
-| Function identity | Storage account | Storage Blob Data Contributor | Read/write synthetic source blobs |
+| Function identity | Storage account | Storage Blob Data Contributor | Read/write source blobs |
 | Function identity | Storage account | Storage Queue Data Contributor | Trigger and poison-queue processing |
 | ACA identity | Storage account | Same two roles | API upload and enqueue |
 | Function + ACA identities | Both AI accounts | Cognitive Services User | Token-authenticated inference |

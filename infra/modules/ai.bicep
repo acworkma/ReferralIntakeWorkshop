@@ -8,6 +8,10 @@ param privateEndpointSubnetId string
 param cognitivePrivateDnsZoneId string
 param functionPrincipalId string
 param containerAppsPrincipalId string
+param contentUnderstandingCompletionModel string = 'gpt-5.2'
+param contentUnderstandingCompletionDeployment string = 'gpt-5.2'
+param contentUnderstandingEmbeddingModel string = 'text-embedding-3-large'
+param contentUnderstandingEmbeddingDeployment string = 'text-embedding-3-large'
 param tags object
 
 resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
@@ -39,6 +43,39 @@ resource contentUnderstanding 'Microsoft.CognitiveServices/accounts@2024-10-01' 
 }
 
 var principals = [functionPrincipalId, containerAppsPrincipalId]
+
+// The custom Content Understanding analyzer requires BOTH a completion and an
+// embedding default before the service will accept it, and both deployments
+// must use the GlobalStandard SKU -- a regional 'Standard' embedding
+// deployment is not visible to Content Understanding and analyzer creation
+// fails with DefaultDeploymentModelNotFound.
+resource completionModel 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: contentUnderstanding
+  name: contentUnderstandingCompletionDeployment
+  sku: { name: 'GlobalStandard', capacity: 50 }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: contentUnderstandingCompletionModel
+      version: '2025-12-11'
+    }
+  }
+}
+
+resource embeddingModel 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: contentUnderstanding
+  name: contentUnderstandingEmbeddingDeployment
+  sku: { name: 'GlobalStandard', capacity: 50 }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: contentUnderstandingEmbeddingModel
+      version: '1'
+    }
+  }
+  // Serialised: the account rejects concurrent deployment writes.
+  dependsOn: [completionModel]
+}
 
 resource documentRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   for principal in principals: {

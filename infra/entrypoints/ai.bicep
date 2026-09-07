@@ -9,7 +9,7 @@ param privateEndpointSubnetId string
 param cognitivePrivateDnsZoneId string
 param functionPrincipalId string
 param containerAppsPrincipalId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/ai.bicep' = {
   name: 'ai'

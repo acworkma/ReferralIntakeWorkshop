@@ -1,1 +1,1 @@
-"""Synthetic referral intake reference service."""
+"""Referral intake reference service."""

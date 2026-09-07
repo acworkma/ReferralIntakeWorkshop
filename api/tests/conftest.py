@@ -4,7 +4,7 @@ from pathlib import Path
 TEST_DATABASE = Path("test-referrals.db")
 TEST_DATABASE.unlink(missing_ok=True)
 os.environ["LOCAL_MOCK_IDENTITY"] = "true"
-os.environ["ALLOW_LOCAL_SYNTHETIC_EXTRACTION"] = "true"
+os.environ["ALLOW_LOCAL_MOCK_EXTRACTION"] = "true"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DATABASE}"
 
 

@@ -5,7 +5,7 @@ param workloadName string = 'referralintake'
 param environmentName string = 'dev'
 param storageAccountId string
 param logAnalyticsWorkspaceId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/integration.bicep' = {
   name: 'integration'

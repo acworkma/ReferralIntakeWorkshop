@@ -80,7 +80,7 @@ resource dashboard 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
                 content: {
                   settings: {
                     title: 'Referral intake operations'
-                    content: 'Synthetic-only reference environment. Monitor failed jobs, authentication failures, queue age, and extraction latency.'
+                    content: 'Workshop reference environment. Monitor failed jobs, authentication failures, queue age, and extraction latency.'
                   }
                 }
               }

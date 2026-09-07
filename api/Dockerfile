@@ -1,10 +1,22 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ACCEPT_EULA=Y
 WORKDIR /app
-COPY requirements.txt .
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg unixodbc \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/microsoft-prod.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
+COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY api/ .
+# The sample corpus and its ground truth ship with the image so
+# `python -m referral.diagnose --score` can grade extraction from inside the
+# private network, where the AI endpoints are the only place they are reachable.
+COPY samples/ ./samples/
 EXPOSE 7071
 CMD ["uvicorn", "referral.app:app", "--host", "0.0.0.0", "--port", "7071"]

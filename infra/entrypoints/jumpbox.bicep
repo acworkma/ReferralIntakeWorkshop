@@ -6,7 +6,7 @@ param environmentName string = 'dev'
 param jumpboxSubnetId string
 @secure()
 param adminPassword string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/jumpbox.bicep' = {
   name: 'jumpbox'

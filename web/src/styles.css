@@ -247,7 +247,6 @@ h3 {
   letter-spacing: 0.04em;
 }
 
-.safety,
 .error {
   display: flex;
   align-items: center;
@@ -258,33 +257,6 @@ h3 {
   border-radius: 8px;
   color: var(--warning);
   background: var(--warning-bg);
-}
-
-.safety div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-
-.safety span {
-  font-size: 0.86rem;
-}
-
-.safety-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: auto;
-  color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.safety-check input {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--action);
 }
 
 .error {
@@ -327,6 +299,22 @@ h3 {
   gap: 12px;
   padding: 16px 18px;
   border-bottom: 1px solid var(--rule);
+}
+
+.review-head > div:first-child {
+  min-width: 0;
+}
+
+.review-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-head h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 button.primary,
@@ -436,9 +424,12 @@ button:disabled {
 
 .queue-copy small {
   margin-top: 4px;
+  overflow: hidden;
   color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status {
@@ -731,19 +722,8 @@ button:disabled {
     display: none;
   }
 
-  .safety,
   .error {
     margin: 14px 14px 0;
-  }
-
-  .safety {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .safety-check {
-    width: 100%;
-    margin-left: 34px;
   }
 
   .workspace {

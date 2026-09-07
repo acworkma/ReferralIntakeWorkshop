@@ -6,8 +6,8 @@ import {
   Inbox,
   LoaderCircle,
   Moon,
-  ShieldCheck,
   Sun,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,13 +28,19 @@ function formatField(value: string) {
   return value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
 }
 
+// A thrown Error with an empty message would render as no banner at all,
+// leaving a failed action looking like nothing happened.
+function toMessage(reason: unknown, fallback: string) {
+  const message = reason instanceof Error ? reason.message.trim() : "";
+  return message || fallback;
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [attested, setAttested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -46,7 +52,7 @@ function App() {
       setSelectedId((current) => current ?? rows[0]?.id ?? null);
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load the queue.");
+      setError(toMessage(reason, "Unable to load the queue."));
     }
   }, []);
 
@@ -61,7 +67,7 @@ function App() {
         setReferrals(rows);
         setSelectedId(rows[0]?.id ?? null);
       })
-      .catch((reason: Error) => setError(reason.message));
+      .catch((reason: unknown) => setError(toMessage(reason, "Unable to load the workspace.")));
   }, []);
 
   useEffect(() => {
@@ -80,9 +86,8 @@ function App() {
       const created = await api.upload(file);
       setReferrals((rows) => [created, ...rows]);
       setSelectedId(created.id);
-      setAttested(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Upload failed.");
+      setError(toMessage(reason, "Upload failed."));
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -97,7 +102,27 @@ function App() {
       setReferrals((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
       setNote("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Review could not be saved.");
+      setError(toMessage(reason, "Review could not be saved."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(referral: Referral) {
+    if (!window.confirm(`Delete "${referral.filename}"? This also frees the document for re-upload.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.remove(referral.id);
+      setReferrals((rows) => {
+        const remaining = rows.filter((row) => row.id !== referral.id);
+        setSelectedId((current) => (current === referral.id ? remaining[0]?.id ?? null : current));
+        return remaining;
+      });
+      setError("");
+    } catch (reason) {
+      setError(toMessage(reason, "The referral could not be deleted."));
     } finally {
       setBusy(false);
     }
@@ -152,22 +177,6 @@ function App() {
           </div>
         </header>
 
-        <section className="safety" aria-label="Synthetic data safety notice">
-          <ShieldCheck size={22} />
-          <div>
-            <strong>Synthetic documents only</strong>
-            <span>No personal, health, customer, or production data. Files must begin with “synthetic-”.</span>
-          </div>
-          <label className="safety-check">
-            <input
-              type="checkbox"
-              checked={attested}
-              onChange={(event) => setAttested(event.target.checked)}
-            />
-            I confirm this file is synthetic
-          </label>
-        </section>
-
         {error && (
           <div className="error" role="alert">
             <X size={18} />
@@ -183,7 +192,7 @@ function App() {
             <div className="section-head">
               <div>
                 <h2>Intake queue</h2>
-                <p>{referrals.length} synthetic referrals</p>
+                <p>{referrals.length} referrals</p>
               </div>
               <input
                 ref={fileInput}
@@ -194,12 +203,11 @@ function App() {
               />
               <button
                 className="primary"
-                disabled={busy || !attested}
+                disabled={busy}
                 onClick={() => fileInput.current?.click()}
-                title={!attested ? "Confirm the synthetic-data attestation first" : undefined}
               >
                 {busy ? <LoaderCircle className="spin" size={18} /> : <FileUp size={18} />}
-                Add synthetic referral
+                Add referral
               </button>
             </div>
 
@@ -207,8 +215,8 @@ function App() {
               {referrals.length === 0 ? (
                 <div className="empty">
                   <FileUp size={32} />
-                  <h3>Start with a synthetic document</h3>
-                  <p>Name it “synthetic-example.pdf”. The API validates its type, size, and signature.</p>
+                  <h3>Start with a referral document</h3>
+                  <p>Upload a PDF, PNG, or JPEG. The API validates its type, size, and signature.</p>
                 </div>
               ) : (
                 referrals.map((referral) => (
@@ -247,7 +255,17 @@ function App() {
                     <h2>{selected.filename}</h2>
                     <p>Submitted by {selected.submittedBy}</p>
                   </div>
-                  <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
+                  <div className="review-head-actions">
+                    <span className={`status ${selected.status}`}>{statusLabel[selected.status]}</span>
+                    <button
+                      className="secondary danger"
+                      disabled={busy}
+                      onClick={() => remove(selected)}
+                      aria-label={`Delete ${selected.filename}`}
+                    >
+                      <Trash2 size={17} /> Delete
+                    </button>
+                  </div>
                 </div>
 
                 {(selected.status === "queued" || selected.status === "processing") && (
@@ -314,6 +332,19 @@ function App() {
                   </div>
                 )}
 
+                {selected.status === "failed" && (
+                  <div className="final-state rejected">
+                    <X size={20} />
+                    <div>
+                      <strong>Extraction failed</strong>
+                      <span>
+                        The document could not be processed after several attempts. Delete it to try
+                        again, and check the API container logs for the underlying error.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {(selected.status === "approved" || selected.status === "rejected") && (
                   <div className={`final-state ${selected.status}`}>
                     {selected.status === "approved" ? <Check size={20} /> : <X size={20} />}
@@ -333,3 +364,5 @@ function App() {
 }
 
 export default App;
+
+

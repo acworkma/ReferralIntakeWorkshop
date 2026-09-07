@@ -11,7 +11,7 @@ def store_document(referral_id: str, filename: str, content: bytes) -> str | Non
         return None
     client = BlobServiceClient(settings.storage_account_url, credential=DefaultAzureCredential())
     blob = client.get_blob_client("referrals", f"{referral_id}/{filename}")
-    blob.upload_blob(content, overwrite=False, metadata={"classification": "synthetic"})
+    blob.upload_blob(content, overwrite=False)
     return blob.url
 
 
@@ -19,6 +19,12 @@ def load_document(storage_uri: str) -> bytes:
     return BlobClient.from_blob_url(
         storage_uri, credential=DefaultAzureCredential()
     ).download_blob(max_concurrency=2).readall()
+
+
+def delete_document(storage_uri: str) -> None:
+    BlobClient.from_blob_url(
+        storage_uri, credential=DefaultAzureCredential()
+    ).delete_blob(delete_snapshots="include")
 
 
 def enqueue(referral_id: str) -> bool:

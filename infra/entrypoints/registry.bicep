@@ -8,7 +8,7 @@ param publicNetworkAccess bool = true
 param privateEndpointSubnetId string
 param acrPrivateDnsZoneId string
 param containerAppsPrincipalId string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/registry.bicep' = {
   name: 'registry'

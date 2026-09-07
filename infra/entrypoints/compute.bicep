@@ -6,6 +6,9 @@ param environmentName string = 'dev'
 param entraClientId string
 param tenantId string = tenant().tenantId
 param acaSubnetId string
+param hubVnetId string
+param spokeVnetId string
+param containerAppsDefaultDomain string = ''
 param functionSubnetId string
 param privateEndpointSubnetId string
 param sitesPrivateDnsZoneId string
@@ -24,7 +27,7 @@ param sqlDatabaseName string
 param documentIntelligenceEndpoint string
 param contentUnderstandingEndpoint string
 param acrLoginServer string
-param tags object = { managedBy: 'bicep', dataClassification: 'synthetic-only' }
+param tags object = { managedBy: 'bicep' }
 
 module component '../modules/compute.bicep' = {
   name: 'compute'
@@ -35,6 +38,9 @@ module component '../modules/compute.bicep' = {
     entraClientId: entraClientId
     tenantId: tenantId
     acaSubnetId: acaSubnetId
+    hubVnetId: hubVnetId
+    spokeVnetId: spokeVnetId
+    containerAppsDefaultDomain: containerAppsDefaultDomain
     functionSubnetId: functionSubnetId
     privateEndpointSubnetId: privateEndpointSubnetId
     sitesPrivateDnsZoneId: sitesPrivateDnsZoneId
@@ -56,3 +62,4 @@ module component '../modules/compute.bicep' = {
 }
 
 output webFqdn string = component.outputs.webFqdn
+output containerAppsDefaultDomain string = component.outputs.containerAppsDefaultDomain

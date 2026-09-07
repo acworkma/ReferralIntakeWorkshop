@@ -12,16 +12,17 @@ SIGNATURES = {
 }
 
 
-async def validate_synthetic_upload(
-    upload: UploadFile, classification: str | None, max_bytes: int
-) -> tuple[str, bytes, str]:
+def sniff_media_type(content: bytes) -> str:
+    for media_type, signatures in SIGNATURES.items():
+        if any(content.startswith(signature) for signature in signatures):
+            return media_type
+    return "application/octet-stream"
+
+
+async def validate_upload(upload: UploadFile, max_bytes: int) -> tuple[str, bytes, str]:
     filename = PurePath(upload.filename or "").name
-    if not re.fullmatch(r"synthetic-[A-Za-z0-9._-]{1,200}", filename):
-        raise HTTPException(
-            400, "Use a safe filename beginning with 'synthetic-'; real-data uploads are prohibited."
-        )
-    if classification != "synthetic":
-        raise HTTPException(400, "X-Data-Classification must be 'synthetic'.")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,200}", filename):
+        raise HTTPException(400, "Use a safe filename.")
     if upload.content_type not in ALLOWED_TYPES:
         raise HTTPException(415, "Only PDF, PNG, and JPEG files are accepted.")
 
