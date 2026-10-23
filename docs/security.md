@@ -10,17 +10,21 @@
 
 ## Built-in RBAC assignments
 
+For the complete resource inventory, deployment roles, scopes, overlapping role coverage and separate participant access, see [deployment roles and least-privilege access](deployment-roles.md). The assignments below belong to runtime identities, not automatically to the deploying user.
+
 | Principal | Scope | Role | Why |
 |---|---|---|---|
 | Function identity | Storage account | Storage Blob Data Contributor | Claim a document out of `incoming/` and move it as it progresses |
 | Function identity | Storage account | Storage Queue Data Contributor | Consume the trigger queue and write to the poison queue |
 | ACA identity | Storage account | Same two roles | Deliver a document into `incoming/`, read it back for review, and inspect queue depth from the diagnostics CLI |
-| Function + ACA identities | Both AI accounts | Cognitive Services User | Token-authenticated inference |
-| Event Grid system topic identity | Storage account | Storage Queue Data Message Sender | Deliver blob events to `referral-jobs`, and nothing else. The storage account has shared key access disabled, so delivery must be identity-based. |
+| Function + ACA identities | Both AI accounts | Cognitive Services User | Token-authenticated AI use, including Content Understanding analyzer/default setup; this grants broad AI DataActions, not inference-only access |
+| Event Grid system topic identity | Storage account | Storage Queue Data Message Sender | Enqueue blob events to `referral-jobs`, without read/delete rights. The assignment currently covers all queues in the account. Shared key access is disabled, so delivery must be identity-based. |
 | Jumpbox admin group (`JUMPBOX_ADMIN_GROUP_OBJECT_ID`) | Key Vault | Key Vault Secrets User | Retrieve the jumpbox admin password (`jumpbox-admin-password` secret) for Bastion RDP sessions |
-| ACA + function identities | ACR | AcrPull | Pull signed/approved workload images |
+| ACA + function identities | ACR | AcrPull | Pull workload images; this role does not enforce signing or approval |
 
 Azure SQL data-plane permissions are not Azure RBAC. From a private administrative host, run `scripts/bootstrap-sql.sql` as the configured Entra administrator. Remove `db_ddladmin` after first schema initialization; retain `db_datareader`/`db_datawriter`.
+
+Storage roles and the Event Grid sender are currently scoped to the storage account; password access is scoped to the whole vault. These are the sample's actual grants, not a claim of exact-action minimum privilege. The [runtime identity table](deployment-roles.md#runtime-identities) includes role IDs, conditional grants and potential narrowing considerations. Browser-only reviewers need application sign-in and private connectivity, not Azure Contributor; the sample does not implement separate reviewer/admin application roles.
 
 ## Intake controls and remaining production work
 

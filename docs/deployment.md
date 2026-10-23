@@ -3,15 +3,15 @@
 ## Prerequisites
 
 - Azure CLI with current Bicep CLI (`az bicep upgrade`)
-- Owner or User Access Administrator plus Contributor at the target subscription
-- A directory-level Entra role capable of managing app registrations (e.g. **Application Administrator** or **Cloud Application Administrator**, or the Microsoft Graph `Application.ReadWrite.All` permission) for whichever identity runs `scripts/register-entra-app.ps1`/`scripts/set-entra-redirect-uris.ps1` — a human via `az login`, or the CI OIDC service principal. This is a directory permission, distinct from Azure RBAC, and can't be granted through Bicep/ARM.
+- The Azure permissions in [deployment roles and least-privilege access](deployment-roles.md): prefer platform-created subscription prerequisites plus the [service-specific RG deployment bundle](deployment-roles.md#delegated-infrastructure-deployer). The unchanged root creates the resource group and configures subscription Defender plans on every run; subscription Contributor plus RG-scoped Role Based Access Control Administrator is a broad bootstrap fallback, not the least-privilege default. Precreate the RG before establishing RG-scoped access delegation. Contributor alone cannot create the runtime role assignments; Owner is not required.
+- Separate Entra/Graph permissions for whichever identity runs `scripts/register-entra-app.ps1`/`scripts/set-entra-redirect-uris.ps1`. Prefer [application ownership with the documented human or CI permissions](deployment-roles.md#entra-application-maintainer), rather than tenant-wide Application Administrator or `Application.ReadWrite.All`. These directory permissions are distinct from Azure RBAC and cannot be granted through Bicep/ARM.
 - Entra group for SQL administration
 - Private DNS/network reachability for administration and a VNet-connected CI runner
 
-Register providers once:
+A platform administrator registers providers once with subscription-level provider-registration permissions; routine image publishers do not need this access:
 
 ```powershell
-$providers = 'Microsoft.App','Microsoft.Web','Microsoft.Storage','Microsoft.Sql','Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.Network','Microsoft.OperationalInsights','Microsoft.Insights','Microsoft.Security','Microsoft.ContainerRegistry','Microsoft.Logic','Microsoft.Compute'
+$providers = 'Microsoft.App','Microsoft.Web','Microsoft.Storage','Microsoft.Sql','Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.Network','Microsoft.OperationalInsights','Microsoft.Insights','Microsoft.Security','Microsoft.ContainerRegistry','Microsoft.Logic','Microsoft.Compute','Microsoft.EventGrid','Microsoft.ManagedIdentity'
 $providers | ForEach-Object { az provider register --namespace $_ }
 ```
 
@@ -77,7 +77,9 @@ The Key Vault secret and the VM's actual OS password are two independent stores 
 
 ## Independent components
 
-Every component has a resource-group entry point under `infra/entrypoints`; Defender remains subscription-scoped. Pass outputs from prerequisites explicitly:
+Every component has a resource-group entry point under `infra/entrypoints`; Defender remains subscription-scoped. Pass outputs from prerequisites explicitly.
+
+For delegated deployment without subscription Contributor, have the platform administrator create the resource group, register providers, handle Defender, and grant the [component roles and shared permissions](deployment-roles.md#deployment-inventory). Service management, networking, identity attachment and runtime role-assignment authority are separate requirements; a service contributor role alone does not deploy every resource in a module. For example:
 
 ```powershell
 az deployment group what-if -g rg-referralintake `
@@ -126,4 +128,6 @@ After deploying a private runner with private DNS reachability, set `acrPublicNe
 
 ## CI identity
 
-Configure GitHub environment variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` for workload identity federation—no client secret. Grant the deployment identity least privilege at the subscription (Azure RBAC), plus the directory-level app-registration role described in Prerequisites if the CI pipeline runs `scripts/register-entra-app.ps1`/`scripts/set-entra-redirect-uris.ps1` (see `.github/workflows/publish-deploy.yml`). See [Azure Login with OIDC](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect) and [Bicep what-if](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-what-if).
+Configure GitHub environment variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` for workload identity federation—no client secret. Use the [image-publisher role bundle](deployment-roles.md#image-publisher) when `deploy_infrastructure=false`: registry discovery/ACR quick builds, existing Container App updates, and Function configuration/restart do not require subscription Contributor or directory administration. **AcrPush alone does not authorize `az acr build`.**
+
+When `deploy_infrastructure=true`, the same workflow identity also needs the root's subscription bootstrap, resource management and runtime role-assignment permissions, plus the [Entra application-maintainer permissions](deployment-roles.md#entra-application-maintainer) for the scripts. The workflow does not automatically separate bootstrap and publisher identities. See [Azure Login with OIDC](https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect) and [Bicep what-if](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-what-if).

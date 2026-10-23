@@ -1,5 +1,7 @@
 # Operations
 
+Use the [participant and operator access matrix](deployment-roles.md#participants-and-operators) to assign permissions for logs, metrics, Bastion, secrets, Storage or SQL without granting the full deployment bundle. Azure resource roles, private connectivity, OS login and database permissions are separate.
+
 ## Routine checks
 
 1. Check the `Referral processing failures` scheduled-query alert.
@@ -55,7 +57,7 @@ That call goes through ARM, so it works even though the function app has no publ
 
 ## Diagnostics
 
-Every dependency sits behind a private endpoint, so troubleshoot from inside the API container rather than from a workstation. `az containerapp exec` runs there with the workload's managed identity:
+Every dependency sits behind a private endpoint, so troubleshoot from inside the API container rather than from a workstation. `az containerapp exec` runs there with the workload's managed identity. The caller needs [Container Apps Operator and relevant environment read access](deployment-roles.md#participants-and-operators); Azure Reader is insufficient. Shell access is privileged: these commands can change data and analyzer configuration using the ACA identity, even if the person running them has no direct Storage/SQL data grants.
 
 ```bash
 APP=ca-referralintake-web-dev

@@ -8,7 +8,7 @@ This is an Azure workshop: every component runs as an Azure resource (Container 
 
 ## Quick start
 
-Prerequisites: Azure CLI with current Bicep CLI, and Owner/User Access Administrator plus Contributor on the target subscription.
+Prerequisites: Azure CLI with current Bicep CLI and the permissions in [deployment roles and least-privilege access](docs/deployment-roles.md). Prefer platform bootstrap plus service-specific roles for the resource-group entry points. The subscription-scoped root command below needs subscription bootstrap permissions and separate authority to create its runtime role assignments; Contributor alone is insufficient. Entra app registration is a separate directory permission.
 
 ```powershell
 az bicep upgrade
@@ -18,7 +18,7 @@ az deployment sub create --name referral-deploy --location eastus2 `
 .\scripts\set-entra-redirect-uris.ps1
 ```
 
-See [deployment instructions](docs/deployment.md) for full prerequisites, the what-if step, and independent component deployment.
+See [deployment instructions](docs/deployment.md) for full prerequisites, the what-if step, and independent component deployment. The [role inventory and consolidation table](docs/deployment-roles.md#when-one-role-can-cover-several-services) explain which service-specific roles cover multiple resources and where additional permissions remain necessary.
 
 ## Repository map
 
@@ -32,7 +32,7 @@ See [deployment instructions](docs/deployment.md) for full prerequisites, the wh
 | `samples/` | Sample referral documents covering every intake channel |
 | `.github/workflows/` | Validation and OIDC-based image/deployment delivery |
 
-Start with [deployment instructions](docs/deployment.md), the [guided walkthrough](docs/walkthrough.md), [architecture](docs/architecture.md), and [security](docs/security.md).
+Start with [deployment instructions](docs/deployment.md), [deployment roles](docs/deployment-roles.md), the [guided walkthrough](docs/walkthrough.md), [architecture](docs/architecture.md), and [security](docs/security.md).
 
 > **Safety:** This repository is a workshop reference. Avoid submitting real personal, health, customer, or production data. See [`samples/`](samples/README.md) for ready-to-use sample documents covering every intake channel.
 
