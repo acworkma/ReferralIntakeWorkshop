@@ -28,7 +28,12 @@ How each resource connects to the network:
 | Container Apps environment | Injected into spoke `snet-aca`, internal IP only |
 | Function App | Outbound VNet integration into spoke `snet-functions` **and** private endpoint in `snet-private-endpoints` |
 | Bastion / Jumpbox | Hub `AzureBastionSubnet` / `snet-jumpbox` |
-| Log Analytics, App Insights, Logic App, managed identities, Event Grid topic | Not on the VNet in this design |
+| Log Analytics, Application Insights | Azure Monitor Private Link Scope (AMPLS) private endpoint in `snet-private-endpoints` ([step 4](#4-monitoring)); public access switched off in [step 18.2](#182-make-monitoring-private-only) |
+| Logic App (Consumption) | Multi-tenant service; it **cannot** be placed in a VNet or given a private endpoint. Its trigger is locked to the spoke's NAT gateway IP ([step 13](#13-logic-app-consumption)). For a fully private Logic App use Standard (step 13, option B) |
+| Event Grid system topic | Platform service; system topics **cannot** be put in a VNet or given a private endpoint. It delivers into the private storage queue with its managed identity and the storage trusted-service exception ([step 8](#8-event-grid-system-topic)) |
+| Managed identities | Not network resources (they are Entra identities), so there is nothing to attach. They are used by the Container App and Function App, which are on the VNet |
+
+Nothing in this design needs public network access except the Bastion public IP and, until the images are pushed, the container registry.
 
 Create resources in the order below. Record the values marked **Record** as you go.
 
@@ -174,17 +179,44 @@ Portal: **Virtual machines > + Create > Azure virtual machine**.
 
 ## 4. Monitoring
 
-Not on the VNet in this design.
+Log Analytics and Application Insights cannot be injected into a subnet. They go on the VNet through an **Azure Monitor Private Link Scope (AMPLS)** and one private endpoint. (The Bicep template leaves them public; this is the private equivalent.)
 
 **Log Analytics:** **Log Analytics workspaces > + Create** > name `log-referralintake-dev`, East US 2 > **Create**. Then **Usage and estimated costs > Data retention** = 30 days.
 
 **Application Insights:** **Application Insights > + Create** > name `appi-referralintake-dev`, East US 2, Workspace `log-referralintake-dev` > **Create**. **Record** the **Connection string** from **Overview**.
 
+**Put monitoring on the VNet (AMPLS):**
+
+1. Portal: **Monitor > Settings > Private Link Scopes > + Create**:
+
+   | Field | Value |
+   |---|---|
+   | Resource group / Name | `rg-referralintake` / `ampls-referralintake-dev` |
+   | Query access mode / Ingestion access mode | **Open** / **Open** (keep Open; it only affects other monitoring resources reached from this VNet) |
+
+   **Review + create > Create.**
+2. **ampls-referralintake-dev > Azure Monitor Resources > + Add** > select `log-referralintake-dev` and `appi-referralintake-dev` > **Apply**.
+3. **Private Endpoint connections > + Private endpoint**:
+
+   | Tab | Field | Value |
+   |---|---|---|
+   | Basics | Name / Region | `pe-ampls-referralintake-dev` / East US 2 |
+   | Resource | Resource type / Resource / Target sub-resource | `Microsoft.insights/privateLinkScopes` / `ampls-referralintake-dev` / `azuremonitor` |
+   | Virtual Network | Virtual network / Subnet | `vnet-referralintake-spoke-dev` / `snet-private-endpoints` |
+   | DNS | Integrate with private DNS zone | **Yes** (creates five zones, below) |
+
+   **Review + create > Create.**
+4. Link all five zones to the hub ([how](#24-peering)): `privatelink.monitor.azure.com`, `privatelink.oms.opinsights.azure.com`, `privatelink.ods.opinsights.azure.com`, `privatelink.agentsvc.azure-automation.net`, `privatelink.blob.core.windows.net`. Storage (step 7) reuses the blob zone; select the existing zone there.
+
+> AMPLS changes how *every* Azure Monitor endpoint resolves for networks linked to these zones. If your hub DNS is shared with other workloads, agree this with the network owner. Microsoft recommends one AMPLS per shared DNS.
+
+Public access is switched off in [step 18.2](#182-make-monitoring-private-only), after the apps are sending data.
+
 ---
 
 ## 5. Managed identities
 
-Not on the VNet. Portal: **Managed Identities > + Create**, East US 2. Create:
+No network step: a managed identity is an Entra identity, not a network resource. It gets VNet traffic through the Container App and Function App it is attached to. Portal: **Managed Identities > + Create**, East US 2. Create:
 
 - `id-referralintake-func-dev`
 - `id-referralintake-aca-dev`
@@ -248,7 +280,7 @@ Portal: **Storage accounts > + Create**.
 | Name / Location | `pe-streferralindev<suffix>-blob` / East US 2 | `pe-streferralindev<suffix>-queue` / East US 2 |
 | Storage sub-resource | `blob` | `queue` |
 | Virtual network / Subnet | spoke / `snet-private-endpoints` | spoke / `snet-private-endpoints` |
-| Integrate with private DNS zone | Yes > `privatelink.blob.core.windows.net` | Yes > `privatelink.queue.core.windows.net` |
+| Integrate with private DNS zone | Yes > `privatelink.blob.core.windows.net` (existing zone from step 4) | Yes > `privatelink.queue.core.windows.net` |
 
 **Review + create > Create.**
 
@@ -268,7 +300,7 @@ Portal: **Storage accounts > + Create**.
 
 ## 8. Event Grid system topic
 
-Not on the VNet; it delivers to the storage queue through a trusted-service exception. Create it right after storage (only one system topic is allowed per storage account; if Defender already created one, see the appendix).
+Event Grid **system** topics cannot be placed in a VNet or given a private endpoint (Event Grid private endpoints exist only for custom topics, domains, and namespaces, which this design does not use). Instead, the topic's managed identity delivers into the private storage queue through the storage trusted-service exception below; no public access is turned on. Create it right after storage (only one system topic is allowed per storage account; if Defender already created one, see the appendix).
 
 Portal: **Event Grid System Topics > + Create**.
 
@@ -446,9 +478,21 @@ Portal: **Container registries > + Create**.
 
 ## 13. Logic App (Consumption)
 
-Not on the VNet in this design.
+A Consumption Logic App is multi-tenant: it **cannot** be placed in a VNet or given a private endpoint. Option A (matches the template) keeps Consumption and restricts its trigger to traffic from your spoke. Option B makes it fully private but goes beyond the template.
 
-Portal: **Logic apps > + Add > Consumption (Multi-tenant)** > name `logic-referralintake-notification-dev`, East US 2 > **Create**.
+### Option A: Consumption, trigger locked to the spoke
+
+**First, give the spoke a fixed outbound IP.** The Container App and Function App call the Logic App from `snet-aca` and `snet-functions`. Portal: **NAT gateways > + Create**:
+
+| Tab | Field | Value |
+|---|---|---|
+| Basics | Name / Region / Availability zone | `ng-referralintake-dev` / East US 2 / No zone |
+| Outbound IP | Public IP addresses | **Create a new public IP address**: `pip-ng-referralintake-dev` |
+| Subnet | Virtual network / Subnets | `vnet-referralintake-spoke-dev` / check `snet-aca` and `snet-functions` |
+
+**Review + create > Create.** **Record** the public IP address. (A NAT gateway on `snet-aca` requires the **Workload profiles** environment used in step 14.)
+
+**Create the Logic App.** Portal: **Logic apps > + Add > Consumption (Multi-tenant)** > name `logic-referralintake-notification-dev`, East US 2 > **Create**.
 
 **After create:**
 1. **Settings > Identity > System assigned** = On > **Save**.
@@ -531,6 +575,16 @@ Portal: **Logic apps > + Add > Consumption (Multi-tenant)** > name `logic-referr
 ```
 
 3. **Save.** Open **Logic app designer** > the trigger > **Record** the **HTTP URL** (`LOGIC_APP_URL`). It is a secret.
+4. **Settings > Workflow settings > Access control configuration**: **Trigger access option** = **Specific IP ranges**, **IP ranges for triggers** = `<NAT gateway IP>/32` > **Save**. Only the spoke can now call the trigger.
+
+### Option B: Logic App Standard on the VNet (beyond the template)
+
+Use this only if policy forbids any multi-tenant endpoint. Logic App Standard runs on an App Service plan, so it gets the same VNet integration and private endpoint as the Function App:
+
+1. **Spoke VNet > Subnets > + Subnet**: `snet-logic`, `10.21.4.0/24`, delegation `Microsoft.Web/serverFarms`, NSG `nsg-referralintake-workload-dev`.
+2. **Logic apps > + Add > Standard (Workflow Service Plan)**, plan **WS1**. **Networking**: Enable public access **Off**, Enable network injection **On**, inbound private endpoint in `snet-private-endpoints` with private DNS zone `privatelink.azurewebsites.net` (the Function App in step 15 reuses it), outbound VNet integration `snet-logic`. Link the zone to the hub ([how](#24-peering)).
+3. Its storage account must also be private (blob, queue, table, and file private endpoints). Follow [Secure traffic between Standard logic apps and virtual networks](https://learn.microsoft.com/azure/logic-apps/secure-single-tenant-workflow-virtual-network-private-endpoint).
+4. Create a **Stateful** workflow, paste the same `definition`, and use its trigger URL as `LOGIC_APP_URL`. Skip the NAT gateway and IP restriction in option A.
 
 ---
 
@@ -707,7 +761,9 @@ Portal: **Event Grid System Topics > evgt-referralintake-dev > + Event Subscript
 
 ---
 
-## 18. Diagnostics and alert
+## 18. Diagnostics, alert, and private monitoring
+
+### 18.1 Diagnostics and alert
 
 1. **Function App > Monitoring > Diagnostic settings > + Add**: `diag-func-referralintake-dev`, check **FunctionAppLogs** and **AllMetrics**, Send to `log-referralintake-dev`.
 2. **Logic App > Monitoring > Diagnostic settings > + Add**: `diag-logic-referralintake-notification-dev`, **allLogs** and **AllMetrics**, same workspace.
@@ -721,13 +777,24 @@ union isfuzzy=true
 
    Measure **Table rows**, Count, Greater than 0, every 5 min, lookback 15 min. Details: severity 2, name `alert-referralintake-failed-jobs-dev`, display name `Referral processing failures`, auto-resolve on. Add an action group only if you want notifications.
 
+### 18.2 Make monitoring private-only
+
+Do this after logs from both apps appear in `log-referralintake-dev`. App telemetry already flows over the AMPLS endpoint from step 4; diagnostic settings use a Microsoft backbone channel and are not affected by these switches.
+
+1. **Move Container Apps logs onto a diagnostic setting.** The environment's **Azure Log Analytics** destination may not reach a private-only workspace. **cae-referralintake-dev > Monitoring > Logging options** > Logs destination **Azure Monitor** > **Save**. Then **Monitoring > Diagnostic settings > + Add**: `diag-cae-referralintake-dev`, check **ContainerAppConsoleLogs** and **ContainerAppSystemLogs**, Send to `log-referralintake-dev`, destination table **Resource specific** > **Save**.
+2. **Update the alert** from 18.1: edit its query and change the second line to `(ContainerAppConsoleLogs | where Log has "failed during processing" | project TimeGenerated)`. Logs now land in that table instead of `ContainerAppConsoleLogs_CL`.
+3. **log-referralintake-dev > Settings > Network isolation**: **Accept data ingestion from public networks not connected through a Private Link Scope** = **No**; **Accept queries from public networks not connected through a Private Link Scope** = **No** > **Save**.
+4. **appi-referralintake-dev > Configure > Network Isolation**: same two settings = **No** > **Save**.
+
+**Check:** from the jumpbox, **log-referralintake-dev > Logs** returns new `FunctionAppLogs` and `ContainerAppConsoleLogs` rows. From outside the VNet, queries are refused; this is expected.
+
 ---
 
 ## 19. Test end to end
 
 From the jumpbox browser:
 
-1. **Private endpoints** (search the blade): eight endpoints, all **Approved**, IPs in `10.21.3.0/24`.
+1. **Private endpoints** (search the blade): nine endpoints (the eight service endpoints plus `pe-ampls-referralintake-dev`), all **Approved**, IPs in `10.21.3.0/24`.
 2. **Container App > Monitoring > Log stream** (`api`): startup completes, analyzer setup succeeds.
 3. **Storage > Containers > incoming > Upload** a new file from [`samples`](../samples/README.md).
 4. **Event Grid topic > Metrics**: Delivered events > 0. **Storage > Queues** `referral-jobs-poison` stays empty.
@@ -782,6 +849,9 @@ Record these as gaps rather than working around them with public access or keys:
 | API won't start | SQL users created (step 9), `DATABASE_URL` client ID, SQL zone hub/spoke links |
 | Blob uploads not processed | Event subscription, topic sender role, storage trusted-services exception, Function running |
 | No email/Teams message | The Logic App only records events; add a connector action yourself |
+| Logic App trigger returns 401/403 | Trigger IP restriction (13 option A) must match the NAT gateway IP; NAT gateway attached to `snet-aca` and `snet-functions` |
+| Logs/App Insights blade says "Unable to connect" on the jumpbox | Edge > **Settings > Privacy, search, and services > Site permissions > Local network access** > allow `https://portal.azure.com`; AMPLS zones linked to the hub |
+| Telemetry stopped after 18.2 | AMPLS endpoint Approved, five monitor zones linked to spoke, Container Apps logging moved to a diagnostic setting |
 
 ### Source templates
 
