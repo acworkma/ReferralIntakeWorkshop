@@ -20,6 +20,8 @@ az deployment sub create --name referral-deploy --location eastus2 `
 
 See [deployment instructions](docs/deployment.md) for full prerequisites, the what-if step, and independent component deployment.
 
+For individual resource creation through the Azure portal, use the [manual portal deployment guide](docs/portal-deployment.md). It includes exact settings, permissions, and wiring, and identifies portal-only limitations such as the need for externally built application images.
+
 ## Repository map
 
 | Path | Purpose |

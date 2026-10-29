@@ -1,5 +1,7 @@
 # Deployment
 
+This page covers Bicep/CLI deployment. To create and configure individual resources in the portal UI, use the [manual portal deployment guide](portal-deployment.md), including its image prerequisites and portal capability limits.
+
 ## Prerequisites
 
 - Azure CLI with current Bicep CLI (`az bicep upgrade`)

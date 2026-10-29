@@ -1,5 +1,7 @@
 # Architecture
 
+For the ordered resource inventory, exact settings, and manual UI configuration steps, see the [portal deployment guide](portal-deployment.md). The [automated deployment guide](deployment.md) covers Bicep/CLI instead.
+
 ## Purpose and boundary
 
 This reference accepts PDF/JPEG/PNG referral documents that arrive in a storage account, extracts the same fields with two independent Azure AI services, compares them, and requires a human decision before anything is filed.
